@@ -9,7 +9,7 @@
 
 Custom [Home Assistant](https://www.home-assistant.io/) integration that publishes Home Assistant cameras to Apple HomeKit as accessories supporting **Secure Video** — motion-triggered recording processed on a HomeKit home hub and stored in iCloud, which the built-in `homekit` bridge does not offer.
 
-> **Status: recording implemented, pending validation against a real home hub.** Each config entry publishes a HomeKit camera accessory that pairs with the Home app, serves live video and audio, and delivers motion-triggered Secure Video recordings. See [Roadmap](#roadmap).
+> **Status: recording works end to end.** Each config entry publishes a HomeKit camera accessory that pairs with the Home app, serves live video and audio, and delivers motion-triggered Secure Video recordings to a home hub. See [Roadmap](#roadmap).
 
 Each entry publishes **one camera** as its own HomeKit accessory, with its own port and pairing code — cameras cannot be published behind a HomeKit bridge, which is why the built-in `homekit` integration also falls back to accessory mode for them.
 
@@ -48,7 +48,7 @@ Every entry creates these entities:
 | `binary_sensor` — Recording | Whether a clip is being delivered to the home hub right now |
 | `sensor` — Last recording | When the last clip finished being delivered |
 
-**Re-encode video** is offered when adding a camera and can be changed later under **Streaming options**; it is stored as an option either way, and defaults to on.
+**Re-encode video** is offered when adding a camera and can be changed later by reconfiguring the entry; it is stored as an option either way, and defaults to on.
 
 With it on, the video is re-encoded to exactly what HomeKit negotiates — profile, level, resolution and frame rate. This is what makes cameras work whose own stream HomeKit will not take, and it costs about one CPU core per 1080p camera.
 
@@ -120,6 +120,7 @@ custom_components/homekit_secure_video/
 │   ├── hap_server.py        # HAP server retaining each session's shared key
 │   ├── manager.py           # publishes, stops and re-publishes the accessory
 │   ├── recording_management.py   # CameraRecordingManagement service
+│   ├── selected_recording_configuration_characteristic.py
 │   └── setup_data_stream_transport_characteristic.py
 ├── binary_sensor.py   # "Paired" and "Recording"
 ├── brand/             # brand assets (icon, logo, svg)
@@ -138,6 +139,7 @@ custom_components/homekit_secure_video/
 │   ├── recording_diagnostics.py
 │   ├── recording_statistics.py
 │   ├── runtime.py     # HomeKitSecureVideoData dataclass
+│   ├── source_profile.py
 │   ├── stream_request.py
 │   └── stream_session_info.py
 ├── datastream/        # HomeKit Data Stream transport
@@ -156,14 +158,15 @@ custom_components/homekit_secure_video/
 ├── exceptions/        # one file per exception class
 │   ├── __init__.py
 │   ├── data_stream_error.py
-│   └── opack_error.py
+│   ├── opack_error.py
+│   └── recording_error.py
 ├── icons.json         # entity icons keyed by translation_key
 ├── image.py           # pairing QR code
 ├── issues.py          # repair issues raised from the camera source probe
 ├── manifest.json
+├── redaction.py       # keeps camera credentials out of logs and diagnostics
 ├── recording/         # HomeKit Secure Video recording
 │   ├── __init__.py
-│   ├── audio_probe.py            # does the camera carry audio?
 │   ├── constants.py              # wire constants of the recording services
 │   ├── ffmpeg_recording_command.py
 │   ├── fragmented_mp4.py         # ftyp/moov and moof/mdat
@@ -171,6 +174,8 @@ custom_components/homekit_secure_video/
 │   ├── recorder.py               # the persistent ffmpeg
 │   ├── recording_session.py      # the dataSend delivery
 │   ├── selected_configuration.py
+│   ├── source_match.py           # does the camera match what was negotiated?
+│   ├── source_probe.py           # what the camera sends, asked of ffprobe
 │   └── supported_configuration.py
 ├── sensor/            # one class per sensor
 │   ├── __init__.py
