@@ -230,9 +230,9 @@ class HomeKitSecureVideoAccessoryManager:
         )
         driver.state.setup_id = config["setup_id"]
         await self._data_stream_server.async_start(source_ip)
-        # What the camera actually sends decides what can be advertised: the
-        # video is copied, not re-encoded, so promising a frame rate or a level
-        # the camera does not produce leaves HomeKit unable to use the stream.
+        # What the camera sends decides whether its stream can be copied
+        # instead of re-encoded, and whether it carries audio to map; it is
+        # also what the repair issues report on.
         source_profile = await self._async_probe_configured_camera()
         LOGGER.debug("Camera %s sends %s", config["camera_entity_id"], source_profile)
         accessory = HomeKitSecureVideoCameraAccessory(
