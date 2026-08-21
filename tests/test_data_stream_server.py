@@ -75,6 +75,27 @@ def _hello(identifier: int = 1) -> HomeKitSecureVideoDataStreamMessage:
     )
 
 
+def _open(identifier: int = 2) -> HomeKitSecureVideoDataStreamMessage:
+    return HomeKitSecureVideoDataStreamMessage(
+        message_type=HomeKitSecureVideoDataStreamMessageType.REQUEST,
+        protocol="dataSend",
+        topic="open",
+        payload={},
+        identifier=identifier,
+    )
+
+
+def _answer_open(server) -> None:
+    """Answer a dataSend/open, so a round trip proves the connection works."""
+    server.register_handler(
+        "dataSend",
+        "open",
+        lambda connection, message: connection.send_response(
+            "dataSend", "open", message.identifier
+        ),
+    )
+
+
 @pytest.fixture
 async def server(socket_enabled):
     data_stream_server = HomeKitSecureVideoDataStreamServer()
@@ -158,6 +179,7 @@ async def test_messages_reach_the_registered_handler(server):
 
 
 async def test_a_message_without_a_handler_is_ignored(server):
+    _answer_open(server)
     keys = server.prepare_session(SHARED_KEY, CONTROLLER_SALT)
     controller = FakeController(keys)
     await controller.async_connect(server.port)
@@ -174,6 +196,10 @@ async def test_a_message_without_a_handler_is_ignored(server):
     )
     await asyncio.sleep(0)
 
+    await controller.async_send(_open())
+    response = await asyncio.wait_for(controller.async_receive(), timeout=5)
+
+    assert response.identifier == 2
     assert len(server.connections) == 1
     await controller.async_close()
 
@@ -264,6 +290,7 @@ async def test_a_connection_that_never_greets_is_dropped(server, monkeypatch):
 
 
 async def test_an_unreadable_message_is_ignored(server):
+    _answer_open(server)
     keys = server.prepare_session(SHARED_KEY, CONTROLLER_SALT)
     controller = FakeController(keys)
     await controller.async_connect(server.port)
@@ -274,6 +301,13 @@ async def test_an_unreadable_message_is_ignored(server):
     await controller._writer.drain()
     await asyncio.sleep(0)
 
+    # A round trip after the bad frame proves the connection still serves the
+    # controller, and that the failed decode did not advance the nonce: the
+    # codec would not authenticate this frame otherwise.
+    await controller.async_send(_open())
+    response = await asyncio.wait_for(controller.async_receive(), timeout=5)
+
+    assert response.identifier == 2
     assert len(server.connections) == 1
     await controller.async_close()
 
