@@ -385,3 +385,35 @@ async def test_diagnostics_count_recordings_and_keep_the_last_statistics(
         "fragments_sent": 0,
         "bytes_sent": 0,
     }
+
+
+async def test_the_service_listens_for_a_lost_connection(
+    data_stream_server, management
+):
+    assert management is not None
+    listener = data_stream_server.register_connection_closed_listener.call_args.args[0]
+
+    assert listener is not None
+
+
+async def test_a_lost_connection_releases_the_recording(management, data_stream_server):
+    _enable(management)
+    connection = MagicMock()
+    management._handle_open(connection, _open_message())
+    assert management.is_recording_in_flight
+    notify = data_stream_server.register_connection_closed_listener.call_args.args[0]
+
+    notify(connection)
+
+    assert not management.is_recording_in_flight
+
+
+async def test_another_connection_closing_leaves_the_recording_alone(management):
+    _enable(management)
+    connection = MagicMock()
+    management._handle_open(connection, _open_message())
+
+    management._handle_connection_closed(MagicMock())
+
+    assert management.is_recording_in_flight
+    management.abort_recording()

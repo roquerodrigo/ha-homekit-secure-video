@@ -287,3 +287,22 @@ async def test_sending_before_the_handshake_is_dropped(server):
     connection.send_event("dataSend", "data", {})
 
     assert not connection.is_ready
+
+
+async def test_a_closed_connection_notifies_its_listeners(server):
+    closed: list[object] = []
+    server.register_connection_closed_listener(closed.append)
+    keys = server.prepare_session(SHARED_KEY, CONTROLLER_SALT)
+    controller = FakeController(keys)
+    await controller.async_connect(server.port)
+    await controller.async_send(_hello())
+    await asyncio.wait_for(controller.async_receive(), timeout=5)
+    connection = server.connections[0]
+
+    await controller.async_close()
+    async with asyncio.timeout(5):
+        while not closed:
+            await asyncio.sleep(0)
+
+    assert closed == [connection]
+    assert server.connections == ()

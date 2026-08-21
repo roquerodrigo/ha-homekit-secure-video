@@ -115,6 +115,9 @@ class HomeKitSecureVideoRecordingManagementService:
             HomeKitSecureVideoDataStreamTopic.CLOSE,
             self._handle_close,
         )
+        data_stream_server.register_connection_closed_listener(
+            self._handle_connection_closed
+        )
 
     @property
     def is_recording_enabled(self) -> bool:
@@ -366,6 +369,13 @@ class HomeKitSecureVideoRecordingManagementService:
         if self._session is not None and self._matches(message):
             reason = message.payload.get("reason")
             self._session.handle_close(reason if isinstance(reason, int) else None)
+
+    def _handle_connection_closed(
+        self, connection: HomeKitSecureVideoDataStreamConnection
+    ) -> None:
+        """Release the recording whose connection went away."""
+        if self._session is not None and self._session.connection is connection:
+            self._session.abandon()
 
     def _matches(self, message: HomeKitSecureVideoDataStreamMessage) -> bool:
         """Return whether the message names the session in flight."""
