@@ -21,6 +21,9 @@ from custom_components.homekit_secure_video.recording import (
 from custom_components.homekit_secure_video.recording.fragmented_mp4 import (
     read_segments,
 )
+from custom_components.homekit_secure_video.recording.recorder import (
+    SUBSCRIBER_QUEUE_SIZE,
+)
 
 from .test_recording_configuration import _selected_tlv
 
@@ -355,10 +358,9 @@ async def test_recorder_feeds_its_subscribers(recorder):
     ):
         await recorder.async_start(command, CONFIGURATION)
         queue = recorder.subscribe()
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
+        fragment = await asyncio.wait_for(queue.get(), 5)
 
-    assert queue.qsize() >= 0
+    assert fragment == _box(b"moof") + _box(b"mdat", b"live")
     recorder.unsubscribe(queue)
     await recorder.async_stop()
 
@@ -476,4 +478,32 @@ async def test_a_recorder_that_ends_on_its_own_reports_it(recorder):
 
     assert ended == [True]
     assert recorder.initialization_segment is None
+    await recorder.async_stop()
+
+
+async def test_a_subscriber_that_falls_behind_drops_fragments(recorder, caplog):
+    fragments = b"".join(
+        _box(b"moof") + _box(b"mdat", bytes([index]))
+        for index in range(SUBSCRIBER_QUEUE_SIZE + 2)
+    )
+    stream = _box(b"ftyp") + _box(b"moov") + fragments
+    command = HomeKitSecureVideoRecordingCommand(
+        input_source="rtsp://camera",
+        configuration=CONFIGURATION,
+        source_has_audio=False,
+    )
+
+    with patch(
+        "asyncio.create_subprocess_exec", AsyncMock(return_value=_process(stream))
+    ):
+        await recorder.async_start(command, CONFIGURATION)
+        queue = recorder.subscribe()
+        async with asyncio.timeout(5):
+            while queue.qsize() < SUBSCRIBER_QUEUE_SIZE:
+                await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+    assert queue.qsize() == SUBSCRIBER_QUEUE_SIZE
+    assert "subscriber is behind" in caplog.text
+    recorder.unsubscribe(queue)
     await recorder.async_stop()
