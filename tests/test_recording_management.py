@@ -417,3 +417,36 @@ async def test_another_connection_closing_leaves_the_recording_alone(management)
 
     assert management.is_recording_in_flight
     management.abort_recording()
+
+
+async def test_a_delivered_recording_is_stamped(management):
+    _enable(management)
+    connection = MagicMock()
+    management._handle_open(connection, _open_message())
+    management._session._send_segment(b"moof", is_initialization=False, is_last=True)
+
+    management.abort_recording()
+
+    assert management.last_recording is not None
+
+
+async def test_a_recording_that_delivered_nothing_is_not_stamped(management):
+    _enable(management)
+    connection = MagicMock()
+    management._handle_open(connection, _open_message())
+
+    management.abort_recording()
+
+    assert management.last_recording is None
+
+
+async def test_an_initialization_segment_alone_is_not_a_recording(management):
+    _enable(management)
+    connection = MagicMock()
+    management._handle_open(connection, _open_message())
+    management._session._send_segment(b"ftyp", is_initialization=True, is_last=False)
+    management._session._send_segment(b"", is_initialization=False, is_last=True)
+
+    management.abort_recording()
+
+    assert management.last_recording is None

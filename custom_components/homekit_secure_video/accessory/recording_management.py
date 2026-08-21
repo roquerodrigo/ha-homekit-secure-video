@@ -399,8 +399,14 @@ class HomeKitSecureVideoRecordingManagementService:
 
     def _handle_session_closed(self) -> None:
         """Forget the session that just closed, remembering what it delivered."""
-        if self._session is not None:
-            self._last_statistics = self._session.statistics
+        session = self._session
         self._session = None
-        self._last_recording = dt_util.utcnow()
+        if session is not None:
+            self._last_statistics = session.statistics
+            # A session reaches this from an abort and from its own failure to
+            # find an initialization segment as readily as from a delivery, and
+            # `last_recording` is the only signal a user has that Secure Video
+            # works.
+            if session.has_delivered_media:
+                self._last_recording = dt_util.utcnow()
         self._announce_state_change()

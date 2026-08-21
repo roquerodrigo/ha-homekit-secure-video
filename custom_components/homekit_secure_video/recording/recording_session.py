@@ -73,6 +73,7 @@ class HomeKitSecureVideoRecordingSession:
         self._data_sequence_number = 1
         self._fragments_sent = 0
         self._bytes_sent = 0
+        self._media_delivered = False
         self._task: asyncio.Task[None] | None = None
 
     @property
@@ -92,6 +93,11 @@ class HomeKitSecureVideoRecordingSession:
             "fragments_sent": self._fragments_sent,
             "bytes_sent": self._bytes_sent,
         }
+
+    @property
+    def has_delivered_media(self) -> bool:
+        """Return whether any footage went out, initialization aside."""
+        return self._media_delivered
 
     @property
     def is_closed(self) -> bool:
@@ -308,6 +314,8 @@ class HomeKitSecureVideoRecordingSession:
         self._data_sequence_number += 1
         self._fragments_sent += 1
         self._bytes_sent += len(payload)
+        if not is_initialization and payload:
+            self._media_delivered = True
 
     def _finish(self) -> None:
         """Mark the session closed and release its task."""
