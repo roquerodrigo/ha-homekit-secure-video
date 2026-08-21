@@ -70,7 +70,7 @@ Repairs are raised under **Settings → Repairs** when the probed camera cannot 
 - [x] Fragmented MP4 pipeline: prebuffer, motion-triggered clips, delivery to the home hub.
 - [x] Live audio (Opus over SRTP).
 - [x] Recording entities, repair issues and recording diagnostics.
-- [ ] Register the brand assets in [home-assistant/brands](https://github.com/home-assistant/brands).
+- [x] Brand assets shipped with the integration (Home Assistant 2026.3+ serves them from `brand/`).
 
 Recording requires an Apple home hub (HomePod or Apple TV) and an iCloud+ plan with a free camera slot; without them the Home app never offers "Stream & Allow Recording".
 

@@ -16,6 +16,25 @@ is not affiliated with, endorsed by, or sponsored by Apple Inc.
 The PNGs are rendered from `icon.svg`; the landscape pair pads the same square
 symbol onto a 2:1 canvas.
 
-**TODO:** submit these files to
-[home-assistant/brands](https://github.com/home-assistant/brands) so Home
-Assistant renders them for every user.
+Nothing has to be submitted anywhere. Since Home Assistant 2026.3 a custom
+integration ships its own brand images: the core `brands` integration serves
+whatever it finds in this `brand/` directory through
+`/api/brands/integration/homekit_secure_video/{image}`, and a local image wins
+over the brands CDN. The directory existing is the whole opt-in —
+`Integration.has_branding` is `"brand" in self._top_level_files`, and no
+`manifest.json` key is involved.
+
+`home-assistant/brands` still holds a legacy `custom_integrations/` folder, but
+it **no longer accepts pull requests for custom integrations**.
+
+Only these filenames are served (`ALLOWED_IMAGES` in
+`homeassistant/components/brands/const.py`), and missing ones fall back down a
+chain that ends at `icon.png`:
+
+`icon.png`, `logo.png`, `icon@2x.png`, `logo@2x.png`, `dark_icon.png`,
+`dark_logo.png`, `dark_icon@2x.png`, `dark_logo@2x.png`
+
+`icon.svg` is kept here as the source the PNGs are rendered from; Home
+Assistant ignores it.
+
+See the [announcement](https://developers.home-assistant.io/blog/2026/02/24/brands-proxy-api/).
