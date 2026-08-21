@@ -231,7 +231,7 @@ def _decode_value(  # noqa: PLR0911, PLR0912 -- one branch per OPACK tag range
     if tag in _FIXED_WIDTH_FORMATS:
         return _decode_fixed_width(data, index, tag, tracked)
     if tag == TAG_DATE:
-        return _decode_date(data, index)
+        return _decode_date(data, index, tracked)
     if tag == TAG_UUID:
         uuid_bytes = _read(data, index, 16)
         tracked.append(uuid_bytes)
@@ -278,10 +278,14 @@ def _decode_fixed_width(
     return value, index + width
 
 
-def _decode_date(data: bytes, index: int) -> tuple[float, int]:
+def _decode_date(
+    data: bytes, index: int, tracked: list[OpackValue]
+) -> tuple[float, int]:
     """Decode an Apple epoch timestamp into a Unix timestamp."""
     seconds: float = struct.unpack("<d", _read(data, index, 8))[0]
-    return seconds + _APPLE_EPOCH_OFFSET_SECONDS, index + 8
+    timestamp = seconds + _APPLE_EPOCH_OFFSET_SECONDS
+    tracked.append(timestamp)
+    return timestamp, index + 8
 
 
 def _decode_length(data: bytes, index: int, width_index: int) -> tuple[int, int]:
