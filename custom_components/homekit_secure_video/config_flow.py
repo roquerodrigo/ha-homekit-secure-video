@@ -48,8 +48,8 @@ def _camera_schema(
     Build the camera selection schema, optionally pre-filled.
 
     Re-encoding is offered when adding a camera, so a compatible one need not
-    pay for it from the start; afterwards it lives in the options flow, which
-    is also where it is stored.
+    pay for it from the start; afterwards it is changed in the reconfigure
+    step, and it is stored in the entry options either way.
     """
     camera_default = (
         default_config["camera_entity_id"] if default_config else vol.UNDEFINED

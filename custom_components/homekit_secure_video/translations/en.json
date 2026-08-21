@@ -13,7 +13,7 @@
         "data_description": {
           "camera_entity_id": "Only cameras that can serve a stream can be published.",
           "motion_entity_id": "Motion from this sensor is reported to HomeKit and triggers recordings.",
-          "reencode": "Leave on unless the camera already sends H.264 at level 4.0 or below and at a resolution of 1080p or less — a camera's secondary stream often does. Can be changed later in the options.",
+          "reencode": "Leave on unless the camera already sends H.264 at level 4.0 or below and at a resolution of 1080p or less — a camera's secondary stream often does. Can be changed later by reconfiguring the entry.",
           "always_on_motion": "Records continuously: HomeKit is told motion never stops, so it keeps opening one recording after another. Ignores the motion sensor above and uses considerably more iCloud storage."
         }
       },
@@ -98,7 +98,7 @@
     },
     "oversized_source": {
       "title": "{entry}: the camera sends a larger picture than HomeKit negotiated",
-      "description": "`{camera}` sends {source_resolution}, larger than the {offered_resolution} offered to HomeKit, and re-encoding is turned off — nothing scales it down, so HomeKit receives a picture it did not ask for. Either point this entry at a lower-resolution stream of the camera, or turn re-encoding on in the integration options."
+      "description": "`{camera}` sends {source_resolution}, larger than the {offered_resolution} offered to HomeKit, and re-encoding is turned off — nothing scales it down, so HomeKit receives a picture it did not ask for. Either point this entry at a lower-resolution stream of the camera, or turn re-encoding on by reconfiguring this entry."
     }
   }
 }
