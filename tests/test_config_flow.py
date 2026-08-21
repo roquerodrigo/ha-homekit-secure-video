@@ -14,6 +14,15 @@ from custom_components.homekit_secure_video.const import (
 from .conftest import CAMERA_ENTITY_ID, MOTION_ENTITY_ID
 
 
+def _defaults(result):
+    """Return the schema defaults, skipping the fields that have none."""
+    return {
+        str(key): key.default()
+        for key in result["data_schema"].schema
+        if callable(key.default)
+    }
+
+
 async def _start_user_flow(hass):
     return await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
@@ -342,3 +351,49 @@ async def test_reconfigure_stores_the_streaming_options_as_options(
     assert setup_integration.options["reencode"] is False
     assert setup_integration.options["stream_audio"] is False
     assert "max_width" not in setup_integration.data
+
+
+async def test_reconfigure_offers_the_saved_limits_as_text(
+    hass, camera_state, setup_integration
+):
+    hass.config_entries.async_update_entry(
+        setup_integration, options={"max_width": 1280, "max_height": 720}
+    )
+
+    result = await setup_integration.start_reconfigure_flow(hass)
+
+    defaults = _defaults(result)
+    # The dropdowns are built from strings, so their defaults have to be too.
+    assert defaults["max_width"] == "1280"
+    assert defaults["max_height"] == "720"
+
+
+async def test_reconfigure_opens_with_the_defaults_when_nothing_is_saved(
+    hass, camera_state, setup_integration
+):
+    result = await setup_integration.start_reconfigure_flow(hass)
+
+    defaults = _defaults(result)
+    assert defaults["max_width"] == "1920"
+    assert defaults["max_height"] == "1080"
+    assert defaults["reencode"] is True
+    assert defaults["stream_audio"] is True
+
+
+async def test_reconfigure_republishes_the_accessory(
+    hass, camera_state, setup_integration, mock_accessory_driver
+):
+    result = await setup_integration.start_reconfigure_flow(hass)
+    await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"camera_entity_id": CAMERA_ENTITY_ID, "max_width": "1280"},
+    )
+    await hass.async_block_till_done()
+
+    assert mock_accessory_driver.async_stop.await_count == 1
+    assert mock_accessory_driver.async_start.await_count == 2
+
+
+async def test_the_entry_has_no_separate_options_screen(hass, setup_integration):
+    # Everything an entry carries is edited in one place, the reconfigure step.
+    assert setup_integration.supports_options is False

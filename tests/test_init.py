@@ -28,8 +28,10 @@ async def test_setup_entry_starts_the_accessory(
     assert mock_accessory_driver.async_start.await_count == 1
 
 
-async def test_setup_entry_registers_update_listener(hass, setup_integration):
-    assert len(setup_integration.update_listeners) == 1
+async def test_setup_entry_registers_no_update_listener(hass, setup_integration):
+    # The reconfigure step reloads the entry itself; a listener on top of it
+    # would republish the accessory twice for every change.
+    assert setup_integration.update_listeners == []
 
 
 async def test_unload_entry_succeeds(hass, setup_integration):

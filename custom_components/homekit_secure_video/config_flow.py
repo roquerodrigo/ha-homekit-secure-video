@@ -10,7 +10,6 @@ from homeassistant import config_entries
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 from homeassistant.components.camera import CameraEntityFeature
 from homeassistant.const import ATTR_SUPPORTED_FEATURES, CONF_PORT, Platform
-from homeassistant.core import callback
 from homeassistant.helpers import selector
 from pyhap.util import generate_pincode, generate_setup_id
 
@@ -27,7 +26,6 @@ from .const import (
     FIRST_HAP_PORT,
     LAST_HAP_PORT,
 )
-from .options_flow import HomeKitSecureVideoOptionsFlow
 from .streaming_options import (
     STREAMING_OPTION_KEYS,
     as_numbers,
@@ -125,14 +123,6 @@ class HomeKitSecureVideoFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for HomeKit Secure Video."""
 
     VERSION = 2
-
-    @staticmethod
-    @callback
-    def async_get_options_flow(
-        config_entry: HomeKitSecureVideoConfigEntry,  # noqa: ARG004
-    ) -> HomeKitSecureVideoOptionsFlow:
-        """Return the options flow handler."""
-        return HomeKitSecureVideoOptionsFlow()
 
     # The narrowed ``HomeKitSecureVideoConfigData`` parameter is intentional
     # — HA's base class declares ``dict[str, Any] | None`` here, and we trade

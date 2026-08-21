@@ -50,25 +50,6 @@
       "reconfigure_successful": "Reconfiguração concluída."
     }
   },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Opções de transmissão",
-        "description": "Limite o que este acessório oferece ao HomeKit.",
-        "data": {
-          "max_width": "Largura máxima",
-          "max_height": "Altura máxima",
-          "max_fps": "Taxa de quadros máxima",
-          "reencode": "Recodificar vídeo",
-          "stream_audio": "Incluir áudio"
-        },
-        "data_description": {
-          "reencode": "Ligado, o vídeo é recodificado exatamente para o que o HomeKit negocia — a opção confiável, e a que faz funcionar câmeras cujo stream o HomeKit não aceita. Custa cerca de um núcleo por câmera 1080p. Desligado, o stream da câmera é repassado como está, apenas corrigindo o nível H.264 acima do aceito; quase não custa CPU — medido em um décimo de núcleo com duas câmeras — mas exige que a câmera já envie uma resolução que o HomeKit tenha recebido na oferta.",
-          "stream_audio": "Envia o áudio da própria câmera ao HomeKit em Opus, junto com o vídeo. Não tem efeito quando a câmera não envia áudio."
-        }
-      }
-    }
-  },
   "entity": {
     "sensor": {
       "pairing_code": {
