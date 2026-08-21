@@ -162,16 +162,35 @@ def _byte(decoded: dict[bytes, bytes], tag: bytes) -> int:
     return value[0]
 
 
+def _fixed_width(decoded: dict[bytes, bytes], tag: bytes, number_format: str) -> int:
+    """
+    Return a fixed-width numeric TLV field.
+
+    A blob truncated inside a value leaves a field shorter than the format
+    needs, and struct.error is not one of the types the write handler reports
+    on — so the length is checked before unpacking.
+    """
+    width = struct.calcsize(number_format)
+    value = _field(decoded, tag)
+    if len(value) < width:
+        message = (
+            f"Failed to read the selected recording configuration: field "
+            f"{tag.hex()} holds {len(value)} bytes, expected {width}"
+        )
+        raise HomeKitSecureVideoRecordingError(message)
+    return int(struct.unpack(number_format, value[:width])[0])
+
+
 def _uint16(decoded: dict[bytes, bytes], tag: bytes) -> int:
     """Return a little-endian 16-bit TLV field."""
-    return int(struct.unpack("<H", _field(decoded, tag)[:2])[0])
+    return _fixed_width(decoded, tag, "<H")
 
 
 def _int32(decoded: dict[bytes, bytes], tag: bytes) -> int:
     """Return a little-endian signed 32-bit TLV field."""
-    return int(struct.unpack("<i", _field(decoded, tag)[:4])[0])
+    return _fixed_width(decoded, tag, "<i")
 
 
 def _uint32(decoded: dict[bytes, bytes], tag: bytes) -> int:
     """Return a little-endian unsigned 32-bit TLV field."""
-    return int(struct.unpack("<I", _field(decoded, tag)[:4])[0])
+    return _fixed_width(decoded, tag, "<I")
