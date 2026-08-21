@@ -31,10 +31,11 @@ def _box(box_type: bytes, body: bytes = b"") -> bytes:
     return struct.pack(">I", 8 + len(body)) + box_type + body
 
 
-def _reader(payload: bytes) -> asyncio.StreamReader:
+def _reader(payload: bytes, *, at_end: bool = True) -> asyncio.StreamReader:
     reader = asyncio.StreamReader()
     reader.feed_data(payload)
-    reader.feed_eof()
+    if at_end:
+        reader.feed_eof()
     return reader
 
 
@@ -306,9 +307,10 @@ def recorder():
     return HomeKitSecureVideoRecorder("ffmpeg")
 
 
-def _process(stream: bytes) -> MagicMock:
+def _process(stream: bytes, *, still_running: bool = True) -> MagicMock:
+    """Stand in for ffmpeg; a still running one has not closed its stdout."""
     process = MagicMock(returncode=None)
-    process.stdout = _reader(stream)
+    process.stdout = _reader(stream, at_end=not still_running)
     process.wait = AsyncMock(return_value=0)
     return process
 
@@ -450,4 +452,28 @@ async def test_recorder_diagnostics_report_the_prebuffer(recorder):
     assert diagnostics["prebuffered_fragments"] == 1
     assert diagnostics["prebuffered_bytes"] > 0
     assert diagnostics["prebuffer_capacity"] >= 1
+    await recorder.async_stop()
+
+
+async def test_a_recorder_that_ends_on_its_own_reports_it(recorder):
+    stream = _box(b"ftyp") + _box(b"moov") + _box(b"moof") + _box(b"mdat", b"one")
+    command = HomeKitSecureVideoRecordingCommand(
+        input_source="rtsp://camera",
+        configuration=CONFIGURATION,
+        source_has_audio=False,
+    )
+    ended: list[bool] = []
+    recorder.set_stream_ended_callback(lambda: ended.append(True))
+
+    with patch(
+        "asyncio.create_subprocess_exec",
+        AsyncMock(return_value=_process(stream, still_running=False)),
+    ):
+        await recorder.async_start(command, CONFIGURATION)
+        async with asyncio.timeout(5):
+            while not ended:
+                await asyncio.sleep(0)
+
+    assert ended == [True]
+    assert recorder.initialization_segment is None
     await recorder.async_stop()

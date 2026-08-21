@@ -758,3 +758,35 @@ async def test_stop_tears_down_a_recording_in_flight(accessory):
 
     session.close.assert_called_once()
     session.async_stop.assert_awaited_once()
+
+
+async def test_a_recorder_that_ends_on_its_own_is_started_again(hass, accessory):
+    with (
+        patch.object(accessory, "_async_sync_recorder", AsyncMock()) as sync,
+        patch.object(accessory, "_next_recorder_restart_delay", return_value=0),
+    ):
+        accessory._handle_recorder_stream_ended()
+        await hass.async_block_till_done()
+
+    sync.assert_awaited_once()
+
+
+def test_each_recorder_failure_backs_off_further(accessory):
+    delays = [accessory._next_recorder_restart_delay() for _ in range(8)]
+
+    assert delays == [5, 10, 20, 40, 80, 160, 300, 300]
+
+
+async def test_a_healthy_recorder_run_resets_the_backoff(accessory):
+    from custom_components.homekit_secure_video.accessory.camera_accessory import (
+        HEALTHY_RECORDER_RUN_SECONDS,
+    )
+
+    accessory._next_recorder_restart_delay()
+    accessory._next_recorder_restart_delay()
+    accessory._recorder_started_at = -HEALTHY_RECORDER_RUN_SECONDS
+
+    with patch.object(accessory, "_async_restart_recorder", AsyncMock()):
+        accessory._handle_recorder_stream_ended()
+
+    assert accessory._next_recorder_restart_delay() == 5

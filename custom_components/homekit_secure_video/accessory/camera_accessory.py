@@ -103,6 +103,12 @@ STREAM_ACTIVE_UUID = UUID("000000B0-0000-1000-8000-0026BB765291")
 
 MAX_HOMEKIT_H264_LEVEL = 40
 MIN_ADVERTISED_FPS = 1
+
+RECORDER_RESTART_DELAY_SECONDS = 5
+MAX_RECORDER_RESTART_DELAY_SECONDS = 300
+# A run this long counts as the camera having worked, so the next failure
+# starts backing off from the beginning again.
+HEALTHY_RECORDER_RUN_SECONDS = 60
 ADVERTISED_FPS = 30
 
 # AAC-ELD needs libfdk_aac, which the Home Assistant ffmpeg build does
@@ -206,6 +212,9 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         self.add_service(self._data_stream_transport.service)
 
         self._recorder = HomeKitSecureVideoRecorder(self._ffmpeg_binary)
+        self._recorder.set_stream_ended_callback(self._handle_recorder_stream_ended)
+        self._recorder_started_at: float | None = None
+        self._recorder_restart_failures = 0
         self._operating_mode = HomeKitSecureVideoCameraOperatingModeService(
             self._handle_camera_active_changed
         )
@@ -540,6 +549,39 @@ class HomeKitSecureVideoCameraAccessory(Camera):
                 handling,
             )
 
+    def _handle_recorder_stream_ended(self) -> None:
+        """Bring the recorder back after ffmpeg stopped on its own."""
+        started_at = self._recorder_started_at
+        self._recorder_started_at = None
+        loop = asyncio.get_running_loop()
+        if started_at is not None and (
+            loop.time() - started_at >= HEALTHY_RECORDER_RUN_SECONDS
+        ):
+            self._recorder_restart_failures = 0
+        self._hass.async_create_task(self._async_restart_recorder())
+
+    async def _async_restart_recorder(self) -> None:
+        """
+        Start the recorder again, backing off while the camera stays unusable.
+
+        Nothing else notices: a request that arrives with no recorder running
+        is rejected before a session exists, so without this a camera that
+        reboots at night stops recording until the entry is reloaded.
+        """
+        delay = self._next_recorder_restart_delay()
+        LOGGER.debug("Restarting the recorder in %s seconds", delay)
+        await asyncio.sleep(delay)
+        await self._async_sync_recorder()
+
+    def _next_recorder_restart_delay(self) -> int:
+        """Return how long to wait before starting the recorder again."""
+        delay = min(
+            RECORDER_RESTART_DELAY_SECONDS * 2**self._recorder_restart_failures,
+            MAX_RECORDER_RESTART_DELAY_SECONDS,
+        )
+        self._recorder_restart_failures += 1
+        return delay
+
     def _handle_recording_state_changed(self) -> None:
         """Start or stop the recorder to match what HomeKit asked for."""
         self._hass.async_create_task(self._async_sync_recorder())
@@ -595,6 +637,7 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         source_has_audio = self._recording_management.is_audio_enabled and (
             await async_source_has_audio(self._ffmpeg_binary, stream_source)
         )
+        self._recorder_started_at = asyncio.get_running_loop().time()
         await self._recorder.async_start(
             HomeKitSecureVideoRecordingCommand(
                 input_source=stream_source,
