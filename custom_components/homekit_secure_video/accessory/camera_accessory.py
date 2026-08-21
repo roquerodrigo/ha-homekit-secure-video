@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import TYPE_CHECKING, cast
 from uuid import UUID
@@ -170,6 +171,11 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         self._stream_audio = options.get("stream_audio", DEFAULT_STREAM_AUDIO)
         self._stream_sessions: dict[str, HomeKitSecureVideoLiveStreamSession] = {}
         self._status_changed: Callable[[], None] | None = None
+        # HomeKit writes several characteristics in a burst when it configures
+        # the camera, and each write schedules a sync. Without this lock they
+        # all pass the "already running" check before the first ffmpeg exists
+        # and every one of them spawns its own, orphaning the rest.
+        self._recorder_lock = asyncio.Lock()
         self._unsubscribe_motion: Callable[[], None] | None = None
 
         super().__init__(
@@ -547,6 +553,11 @@ class HomeKitSecureVideoCameraAccessory(Camera):
 
     async def _async_sync_recorder(self) -> None:
         """Run the recorder exactly while HomeKit wants recordings."""
+        async with self._recorder_lock:
+            await self._async_sync_recorder_once()
+
+    async def _async_sync_recorder_once(self) -> None:
+        """Bring the recorder in line with what HomeKit currently wants."""
         configuration = self._recording_management.selected_configuration
         should_record = (
             self._recording_management.is_recording_enabled

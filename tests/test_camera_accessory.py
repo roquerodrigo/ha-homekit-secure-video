@@ -667,3 +667,50 @@ async def test_a_matching_source_honours_the_copy_option(accessory):
     }
 
     assert accessory._reencode_recording(configuration) is False
+
+
+async def test_a_burst_of_writes_starts_one_recorder(hass, accessory):
+    """HomeKit configures the camera with several writes in a row."""
+    import asyncio
+
+    from custom_components.homekit_secure_video.recording import (
+        HomeKitSecureVideoSelectedConfiguration,
+    )
+
+    from .test_recording_configuration import _selected_tlv
+
+    management = accessory._recording_management
+    management._selected = HomeKitSecureVideoSelectedConfiguration.from_tlv(
+        _selected_tlv()
+    )
+    management.service.get_characteristic("Active").value = 1
+    accessory._operating_mode.service.get_characteristic(
+        "HomeKitCameraActive"
+    ).value = 1
+
+    started = 0
+
+    async def start(*_args, **_kwargs):
+        nonlocal started
+        started += 1
+        # Resolving the source and probing its audio both take a while, which
+        # is the window the burst used to slip through.
+        await asyncio.sleep(0)
+        accessory._recorder.is_running = True
+        return True
+
+    accessory._recorder = MagicMock()
+    accessory._recorder.is_running = False
+    accessory._recorder.async_start = AsyncMock(side_effect=start)
+    accessory._recorder.async_stop = AsyncMock()
+
+    with (
+        patch(
+            f"{MODULE}.camera.async_get_stream_source",
+            AsyncMock(return_value="rtsp://camera"),
+        ),
+        patch(f"{MODULE}.async_source_has_audio", AsyncMock(return_value=False)),
+    ):
+        await asyncio.gather(*(accessory._async_sync_recorder() for _ in range(8)))
+
+    assert started == 1
