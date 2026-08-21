@@ -1,0 +1,116 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a camera",
+        "description": "Pick the camera to publish to HomeKit. Each entry publishes one camera as its own HomeKit accessory, with its own pairing code.",
+        "data": {
+          "camera_entity_id": "Camera",
+          "motion_entity_id": "Motion sensor",
+          "reencode": "Re-encode video",
+          "always_on_motion": "Always report motion"
+        },
+        "data_description": {
+          "camera_entity_id": "Only cameras that can serve a stream can be published.",
+          "motion_entity_id": "Motion from this sensor is reported to HomeKit and triggers recordings.",
+          "reencode": "Leave on unless the camera already sends H.264 at level 4.0 or below and at a resolution of 1080p or less — a camera's secondary stream often does. Can be changed later in the options.",
+          "always_on_motion": "Records continuously: HomeKit is told motion never stops, so it keeps opening one recording after another. Ignores the motion sensor above and uses considerably more iCloud storage."
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure camera",
+        "description": "Change the camera or the motion trigger of this entry. The pairing stays valid, so the accessory does not need to be added to the Home app again.",
+        "data": {
+          "camera_entity_id": "Camera",
+          "motion_entity_id": "Motion sensor",
+          "always_on_motion": "Always report motion"
+        },
+        "data_description": {
+          "camera_entity_id": "Only cameras that can serve a stream can be published.",
+          "motion_entity_id": "Motion from this sensor is reported to HomeKit and triggers recordings.",
+          "always_on_motion": "Records continuously: HomeKit is told motion never stops, so it keeps opening one recording after another. Ignores the motion sensor above and uses considerably more iCloud storage."
+        }
+      }
+    },
+    "error": {
+      "camera_not_found": "That camera entity does not exist.",
+      "camera_without_stream": "That camera cannot serve a stream, so HomeKit has nothing to play.",
+      "no_free_port": "No free port is available to publish another accessory.",
+      "already_configured": "This camera is already published by another entry."
+    },
+    "abort": {
+      "already_configured": "This camera is already published to HomeKit.",
+      "reconfigure_successful": "Reconfiguration was successful."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Streaming options",
+        "description": "Limit what this accessory offers to HomeKit.",
+        "data": {
+          "max_width": "Maximum width",
+          "max_height": "Maximum height",
+          "max_fps": "Maximum frame rate",
+          "reencode": "Re-encode video",
+          "stream_audio": "Include audio"
+        },
+        "data_description": {
+          "reencode": "On, the video is re-encoded to exactly what HomeKit negotiates — the reliable choice, and the one that makes cameras work whose own stream HomeKit will not take. Costs about one CPU core per 1080p camera. Off, the camera's stream is passed through untouched apart from correcting an over-spec H.264 level, which is nearly free — measured at a tenth of a core for two cameras — but needs a camera that already sends a resolution HomeKit was offered.",
+          "stream_audio": "Sends the camera's own audio to HomeKit as Opus, alongside the video. Has no effect when the camera sends no audio."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "pairing_code": {
+        "name": "Pairing code"
+      },
+      "camera_mode": {
+        "name": "HomeKit camera mode",
+        "state": {
+          "off": "Off",
+          "detect_activity": "Detect activity",
+          "stream": "Stream",
+          "stream_and_record": "Stream and allow recording"
+        }
+      },
+      "last_recording": {
+        "name": "Last recording"
+      }
+    },
+    "binary_sensor": {
+      "paired": {
+        "name": "Paired"
+      },
+      "recording": {
+        "name": "Recording"
+      }
+    },
+    "image": {
+      "pairing_qr_code": {
+        "name": "Pairing QR code"
+      }
+    },
+    "button": {
+      "reset_pairing": {
+        "name": "Reset pairing"
+      }
+    }
+  },
+  "issues": {
+    "no_stream_source": {
+      "title": "{entry}: the camera does not provide a stream",
+      "description": "`{camera}` reports no stream source, so HomeKit has nothing to play or record. This usually means the camera integration is misconfigured, or the entity is a snapshot-only camera. Point this entry at a camera that serves RTSP."
+    },
+    "unsupported_codec": {
+      "title": "{entry}: the camera sends a video codec HomeKit cannot play",
+      "description": "`{camera}` sends {codec}, and HomeKit only accepts H.264. Live video and recordings will not work until the camera is switched to H.264 — most cameras offer it on a secondary stream."
+    },
+    "oversized_source": {
+      "title": "{entry}: the camera sends a larger picture than HomeKit negotiated",
+      "description": "`{camera}` sends {source_resolution}, larger than the {offered_resolution} offered to HomeKit, and re-encoding is turned off — nothing scales it down, so HomeKit receives a picture it did not ask for. Either point this entry at a lower-resolution stream of the camera, or turn re-encoding on in the integration options."
+    }
+  }
+}

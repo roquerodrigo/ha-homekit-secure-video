@@ -1,0 +1,23 @@
+{
+  "domain": "homekit_secure_video",
+  "name": "HomeKit Secure Video",
+  "codeowners": [
+    "@roquerodrigo"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "camera",
+    "ffmpeg",
+    "network",
+    "zeroconf"
+  ],
+  "documentation": "https://github.com/roquerodrigo/ha-homekit-secure-video",
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/roquerodrigo/ha-homekit-secure-video/issues",
+  "requirements": [
+    "HAP-python[QRCode]==5.0.0",
+    "pypng==0.20220715.0"
+  ],
+  "version": "0.1.0"
+}

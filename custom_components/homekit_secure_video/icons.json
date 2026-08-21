@@ -1,0 +1,33 @@
+{
+    "entity": {
+        "sensor": {
+            "pairing_code": {
+                "default": "mdi:key"
+            },
+            "camera_mode": {
+                "default": "mdi:cctv"
+            },
+            "last_recording": {
+                "default": "mdi:history"
+            }
+        },
+        "binary_sensor": {
+            "paired": {
+                "default": "mdi:link-variant"
+            },
+            "recording": {
+                "default": "mdi:record-rec"
+            }
+        },
+        "image": {
+            "pairing_qr_code": {
+                "default": "mdi:qrcode"
+            }
+        },
+        "button": {
+            "reset_pairing": {
+                "default": "mdi:restore"
+            }
+        }
+    }
+}

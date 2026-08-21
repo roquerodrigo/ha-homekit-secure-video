@@ -1,0 +1,116 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Adicionar uma câmera",
+        "description": "Escolha a câmera que será publicada no HomeKit. Cada entrada publica uma câmera como um acessório HomeKit próprio, com seu próprio código de pareamento.",
+        "data": {
+          "camera_entity_id": "Câmera",
+          "motion_entity_id": "Sensor de movimento",
+          "reencode": "Recodificar vídeo",
+          "always_on_motion": "Sempre reportar movimento"
+        },
+        "data_description": {
+          "camera_entity_id": "Só é possível publicar câmeras capazes de fornecer um stream.",
+          "motion_entity_id": "O movimento desse sensor é informado ao HomeKit e dispara as gravações.",
+          "reencode": "Deixe ligado, a menos que a câmera já envie H.264 em nível 4.0 ou menor e resolução de 1080p ou menos — o stream secundário da câmera costuma atender. Pode ser alterado depois nas opções.",
+          "always_on_motion": "Grava continuamente: o HomeKit é informado de que o movimento nunca cessa e abre uma gravação atrás da outra. Ignora o sensor de movimento acima e consome bem mais armazenamento no iCloud."
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigurar câmera",
+        "description": "Altere a câmera ou o gatilho de movimento desta entrada. O pareamento continua válido, então o acessório não precisa ser adicionado de novo no app Casa.",
+        "data": {
+          "camera_entity_id": "Câmera",
+          "motion_entity_id": "Sensor de movimento",
+          "always_on_motion": "Sempre reportar movimento"
+        },
+        "data_description": {
+          "camera_entity_id": "Só é possível publicar câmeras capazes de fornecer um stream.",
+          "motion_entity_id": "O movimento desse sensor é informado ao HomeKit e dispara as gravações.",
+          "always_on_motion": "Grava continuamente: o HomeKit é informado de que o movimento nunca cessa e abre uma gravação atrás da outra. Ignora o sensor de movimento acima e consome bem mais armazenamento no iCloud."
+        }
+      }
+    },
+    "error": {
+      "camera_not_found": "Essa entidade de câmera não existe.",
+      "camera_without_stream": "Essa câmera não fornece stream, então o HomeKit não tem o que exibir.",
+      "no_free_port": "Não há porta livre para publicar outro acessório.",
+      "already_configured": "Esta câmera já é publicada por outra entrada."
+    },
+    "abort": {
+      "already_configured": "Esta câmera já está publicada no HomeKit.",
+      "reconfigure_successful": "Reconfiguração concluída."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opções de transmissão",
+        "description": "Limite o que este acessório oferece ao HomeKit.",
+        "data": {
+          "max_width": "Largura máxima",
+          "max_height": "Altura máxima",
+          "max_fps": "Taxa de quadros máxima",
+          "reencode": "Recodificar vídeo",
+          "stream_audio": "Incluir áudio"
+        },
+        "data_description": {
+          "reencode": "Ligado, o vídeo é recodificado exatamente para o que o HomeKit negocia — a opção confiável, e a que faz funcionar câmeras cujo stream o HomeKit não aceita. Custa cerca de um núcleo por câmera 1080p. Desligado, o stream da câmera é repassado como está, apenas corrigindo o nível H.264 acima do aceito; quase não custa CPU — medido em um décimo de núcleo com duas câmeras — mas exige que a câmera já envie uma resolução que o HomeKit tenha recebido na oferta.",
+          "stream_audio": "Envia o áudio da própria câmera ao HomeKit em Opus, junto com o vídeo. Não tem efeito quando a câmera não envia áudio."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "pairing_code": {
+        "name": "Código de pareamento"
+      },
+      "camera_mode": {
+        "name": "Modo da câmera no HomeKit",
+        "state": {
+          "off": "Desligada",
+          "detect_activity": "Detectar atividade",
+          "stream": "Transmitir",
+          "stream_and_record": "Transmitir e permitir gravação"
+        }
+      },
+      "last_recording": {
+        "name": "Última gravação"
+      }
+    },
+    "binary_sensor": {
+      "paired": {
+        "name": "Pareado"
+      },
+      "recording": {
+        "name": "Gravando"
+      }
+    },
+    "image": {
+      "pairing_qr_code": {
+        "name": "QR Code de pareamento"
+      }
+    },
+    "button": {
+      "reset_pairing": {
+        "name": "Resetar pareamento"
+      }
+    }
+  },
+  "issues": {
+    "no_stream_source": {
+      "title": "{entry}: a câmera não fornece transmissão",
+      "description": "`{camera}` não informa nenhuma fonte de transmissão, então o HomeKit não tem o que reproduzir ou gravar. Normalmente isso indica integração de câmera mal configurada, ou uma entidade que só fornece imagem estática. Aponte esta entrada para uma câmera que sirva RTSP."
+    },
+    "unsupported_codec": {
+      "title": "{entry}: a câmera envia um codec de vídeo que o HomeKit não reproduz",
+      "description": "`{camera}` envia {codec}, e o HomeKit só aceita H.264. Vídeo ao vivo e gravações não vão funcionar até a câmera passar a enviar H.264 — a maioria das câmeras oferece isso no fluxo secundário."
+    },
+    "oversized_source": {
+      "title": "{entry}: a câmera envia uma imagem maior do que a negociada com o HomeKit",
+      "description": "`{camera}` envia {source_resolution}, maior que os {offered_resolution} oferecidos ao HomeKit, e a recodificação está desligada — nada reduz a imagem, então o HomeKit recebe algo diferente do que pediu. Aponte esta entrada para um fluxo de menor resolução da câmera, ou ligue a recodificação nas opções da integração."
+    }
+  }
+}
