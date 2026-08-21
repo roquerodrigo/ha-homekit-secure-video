@@ -315,3 +315,14 @@ async def test_a_delivery_that_raises_releases_the_session(session, recorder):
 
     assert session.is_closed
     assert session.closed_calls == [True]
+
+
+async def test_stopping_the_session_unwinds_its_delivery(session, recorder):
+    session.start()
+    await _settle()
+
+    await session.async_stop()
+
+    assert session.is_closed
+    assert session.closed_calls == [True]
+    assert recorder.unsubscribed

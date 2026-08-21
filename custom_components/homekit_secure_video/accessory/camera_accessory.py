@@ -286,6 +286,10 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         for session in list(self._stream_sessions.values()):
             await session.async_stop()
         self._stream_sessions.clear()
+        # The recording is torn down while this accessory is still coherent:
+        # a delivery left running reaches back into it through its own close
+        # handler and starts a recorder nothing will ever stop.
+        await self._recording_management.async_stop()
         await self._recorder.async_stop()
         await super().stop()
 

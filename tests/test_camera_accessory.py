@@ -714,3 +714,15 @@ async def test_a_burst_of_writes_starts_one_recorder(hass, accessory):
         await asyncio.gather(*(accessory._async_sync_recorder() for _ in range(8)))
 
     assert started == 1
+
+
+async def test_stop_tears_down_a_recording_in_flight(accessory):
+    session = MagicMock()
+    session.is_closed = False
+    session.async_stop = AsyncMock()
+    accessory._recording_management._session = session
+
+    await accessory.stop()
+
+    session.close.assert_called_once()
+    session.async_stop.assert_awaited_once()
