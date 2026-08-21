@@ -13,6 +13,7 @@ from ..datastream import (
     HomeKitSecureVideoDataStreamTopic,
 )
 from .constants import (
+    CLOSE_TIMEOUT_SECONDS,
     MAX_CHUNK_SIZE,
     MAX_RECORDING_SECONDS,
     PACKET_TYPE_MEDIA_FRAGMENT,
@@ -66,11 +67,17 @@ class HomeKitSecureVideoRecordingSession:
         self._request_id = request_id
         self._on_closed = on_closed
         self._stop = asyncio.Event()
+        self._closed_event = asyncio.Event()
         self._closed = False
         self._data_sequence_number = 1
         self._fragments_sent = 0
         self._bytes_sent = 0
         self._task: asyncio.Task[None] | None = None
+
+    @property
+    def connection(self) -> HomeKitSecureVideoDataStreamConnection:
+        """Return the connection this recording is delivered over."""
+        return self._connection
 
     @property
     def stream_id(self) -> int:
@@ -93,6 +100,7 @@ class HomeKitSecureVideoRecordingSession:
     def start(self) -> None:
         """Accept the stream and start delivering fragments."""
         self._task = asyncio.create_task(self._async_deliver())
+        self._task.add_done_callback(self._handle_delivery_done)
 
     def request_stop(self) -> None:
         """Ask the session to finish after the fragment it is on."""
@@ -130,6 +138,18 @@ class HomeKitSecureVideoRecordingSession:
         )
         self._finish()
 
+    def abandon(self) -> None:
+        """Release the session because its connection went away."""
+        if self._closed:
+            return
+        LOGGER.debug(
+            "Recording %s lost its connection after %s fragments (%s bytes)",
+            self._stream_id,
+            self._fragments_sent,
+            self._bytes_sent,
+        )
+        self._finish()
+
     async def _async_deliver(self) -> None:
         """Send the initialization segment, the prebuffer, and then live fragments."""
         self._connection.send_response(
@@ -156,6 +176,41 @@ class HomeKitSecureVideoRecordingSession:
             await self._async_send_live_fragments(queue)
         finally:
             self._recorder.unsubscribe(queue)
+
+        await self._async_await_close()
+
+    async def _async_await_close(self) -> None:
+        """
+        Wait for the hub to acknowledge the recording, then give up on it.
+
+        Every path that marks the session closed belongs to the hub, so an
+        acknowledgement lost to a reboot or a dropped connection would leave
+        this session in flight forever — and the accessory answers BUSY to
+        every later recording request while one is.
+        """
+        try:
+            async with asyncio.timeout(CLOSE_TIMEOUT_SECONDS):
+                await self._closed_event.wait()
+        except TimeoutError:
+            LOGGER.warning(
+                "Recording %s was never acknowledged by the hub, closing it",
+                self._stream_id,
+            )
+            self.close(HomeKitSecureVideoDataStreamCloseReason.TIMEOUT)
+
+    def _handle_delivery_done(self, task: asyncio.Task[None]) -> None:
+        """Release the session when its delivery ends for any reason."""
+        if task.cancelled():
+            return
+        exception = task.exception()
+        if exception is not None:
+            LOGGER.error(
+                "Recording %s failed: %s",
+                self._stream_id,
+                exception,
+                exc_info=exception,
+            )
+        self._finish()
 
     async def _async_await_initialization_segment(self) -> bytes | None:
         """
@@ -250,6 +305,7 @@ class HomeKitSecureVideoRecordingSession:
         if self._closed:
             return
         self._closed = True
+        self._closed_event.set()
         task = self._task
         self._task = None
         if task is not None and not task.done():

@@ -267,3 +267,51 @@ async def test_a_late_initialization_segment_is_waited_for(connection, make_sess
         await _settle()
 
     assert _data_events(connection)[0]["packets"][0]["data"] == b"init"
+
+
+async def test_an_unacknowledged_recording_closes_itself(
+    connection, make_session, recorder
+):
+    from custom_components.homekit_secure_video.recording import recording_session
+
+    session = make_session(recorder)
+    with patch.object(recording_session, "CLOSE_TIMEOUT_SECONDS", 0):
+        session.start()
+        await _settle()
+        session.request_stop()
+        await recorder.queue.put(b"last")
+        await _settle()
+
+    assert session.is_closed
+    assert session.closed_calls == [True]
+    close_events = [args[2] for args in _events(connection) if args[1] == "close"]
+    assert close_events[-1] == {
+        "streamId": STREAM_ID,
+        "reason": int(HomeKitSecureVideoDataStreamCloseReason.TIMEOUT),
+    }
+
+
+async def test_the_session_waits_for_the_acknowledgement_before_closing(
+    session, recorder
+):
+    session.start()
+    await _settle()
+    session.request_stop()
+    await recorder.queue.put(b"last")
+    await _settle()
+
+    assert not session.is_closed
+
+    session.handle_acknowledgement()
+
+    assert session.is_closed
+    assert session.closed_calls == [True]
+
+
+async def test_a_delivery_that_raises_releases_the_session(session, recorder):
+    recorder.prebuffered_fragments = None
+    session.start()
+    await _settle()
+
+    assert session.is_closed
+    assert session.closed_calls == [True]

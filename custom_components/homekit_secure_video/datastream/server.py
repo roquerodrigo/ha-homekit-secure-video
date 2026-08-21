@@ -21,6 +21,7 @@ type MessageHandler = Callable[
     [HomeKitSecureVideoDataStreamConnection, HomeKitSecureVideoDataStreamMessage],
     None,
 ]
+type ConnectionClosedListener = Callable[[HomeKitSecureVideoDataStreamConnection], None]
 
 
 class HomeKitSecureVideoDataStreamServer:
@@ -39,6 +40,7 @@ class HomeKitSecureVideoDataStreamServer:
         self._prepared_sessions: list[HomeKitSecureVideoPreparedDataStreamSession] = []
         self._connections: list[HomeKitSecureVideoDataStreamConnection] = []
         self._handlers: dict[tuple[str, str], MessageHandler] = {}
+        self._connection_closed_listeners: list[ConnectionClosedListener] = []
 
     @property
     def port(self) -> int | None:
@@ -65,6 +67,18 @@ class HomeKitSecureVideoDataStreamServer:
     ) -> None:
         """Register the handler for one protocol and topic."""
         self._handlers[protocol, topic] = handler
+
+    def register_connection_closed_listener(
+        self, listener: ConnectionClosedListener
+    ) -> None:
+        """
+        Register a listener notified when a connection goes away.
+
+        A connection carries work that outlives the frames on it — a recording
+        being delivered, for one — and its owner has no other way to learn the
+        peer is gone.
+        """
+        self._connection_closed_listeners.append(listener)
 
     def prepare_session(
         self, shared_key: bytes, controller_key_salt: bytes
@@ -147,9 +161,12 @@ class HomeKitSecureVideoDataStreamServer:
     def async_remove_connection(
         self, connection: HomeKitSecureVideoDataStreamConnection
     ) -> None:
-        """Forget a connection that closed."""
-        if connection in self._connections:
-            self._connections.remove(connection)
+        """Forget a connection that closed and tell whoever was using it."""
+        if connection not in self._connections:
+            return
+        self._connections.remove(connection)
+        for listener in tuple(self._connection_closed_listeners):
+            listener(connection)
 
     def async_handle_message(
         self,
