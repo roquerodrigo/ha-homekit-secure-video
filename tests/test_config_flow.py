@@ -301,10 +301,44 @@ async def test_re_encoding_defaults_to_on_when_left_alone(
     assert result["options"]["reencode"] is True
 
 
-async def test_reconfigure_does_not_offer_re_encoding(
+async def test_reconfigure_offers_the_streaming_options_too(
     hass, camera_state, setup_integration
 ):
     result = await setup_integration.start_reconfigure_flow(hass)
 
-    schema = result["data_schema"].schema
-    assert not any(str(key) == "reencode" for key in schema)
+    offered = {str(key) for key in result["data_schema"].schema}
+    assert offered == {
+        "camera_entity_id",
+        "motion_entity_id",
+        "always_on_motion",
+        "max_width",
+        "max_height",
+        "max_fps",
+        "reencode",
+        "stream_audio",
+    }
+
+
+async def test_reconfigure_stores_the_streaming_options_as_options(
+    hass, camera_state, setup_integration
+):
+    result = await setup_integration.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            "camera_entity_id": CAMERA_ENTITY_ID,
+            "max_width": "1280",
+            "max_height": "720",
+            "max_fps": 15,
+            "reencode": False,
+            "stream_audio": False,
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result["reason"] == "reconfigure_successful"
+    assert setup_integration.options["max_width"] == 1280
+    assert setup_integration.options["max_height"] == 720
+    assert setup_integration.options["reencode"] is False
+    assert setup_integration.options["stream_audio"] is False
+    assert "max_width" not in setup_integration.data

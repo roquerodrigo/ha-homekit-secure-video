@@ -34,7 +34,7 @@ Pick the camera to publish, the motion sensor to report to HomeKit, and whether 
 
 **Always report motion** records continuously instead: HomeKit is told the motion never stops, so it opens one recording after another. It ignores the motion sensor and uses considerably more iCloud storage.
 
-The camera and the motion trigger can both be changed later under **Reconfigure** (three-dot menu). The pairing survives the change, so the accessory does not have to be added to the Home app again.
+Everything about an entry can be changed later under **Reconfigure** (three-dot menu): the camera, the motion trigger and the streaming limits. The pairing survives the change, so the accessory does not have to be added to the Home app again.
 
 Every entry creates these entities:
 
@@ -54,7 +54,7 @@ With it on, the video is re-encoded to exactly what HomeKit negotiates — profi
 
 With it off, the camera's stream is passed through untouched apart from rewriting an over-spec H.264 level in the stream header, which needs no re-encoding. Two cameras cost about a tenth of a core this way. It requires a camera that already sends a resolution HomeKit was offered — a camera's secondary stream usually does, and pointing the entry at one is the cheapest way to run.
 
-**Streaming options** (three-dot menu → Configure) cap the resolution and frame rate the accessory offers to HomeKit, and carry the re-encode and audio switches.
+**Streaming options** (three-dot menu → Configure) cap the resolution and frame rate the accessory offers to HomeKit, and carry the re-encode and audio switches. The same controls are offered by **Reconfigure**, so either screen can be used.
 
 **Include audio** sends the camera's own audio to HomeKit as Opus alongside the video. Opus is the only codec offered: AAC-ELD needs an ffmpeg built with `libfdk_aac`, which Home Assistant's is not. Cameras that send no audio are unaffected.
 
@@ -161,7 +161,7 @@ custom_components/homekit_secure_video/
 ├── image.py           # pairing QR code
 ├── issues.py          # repair issues raised from the camera source probe
 ├── manifest.json
-├── options_flow.py    # OptionsFlow with the streaming limits, re-encode and audio
+├── options_flow.py    # OptionsFlow over the shared streaming fields
 ├── recording/         # HomeKit Secure Video recording
 │   ├── __init__.py
 │   ├── audio_probe.py            # does the camera carry audio?
@@ -178,6 +178,7 @@ custom_components/homekit_secure_video/
 │   ├── camera_mode.py
 │   ├── last_recording.py
 │   └── pairing_code.py
+├── streaming_options.py  # streaming schema fields shared by both flows
 ├── streaming/         # live SRTP streaming
 │   ├── __init__.py
 │   ├── live_stream_command.py   # ffmpeg arguments, video and Opus audio

@@ -19,16 +19,23 @@
       },
       "reconfigure": {
         "title": "Reconfigurar câmera",
-        "description": "Altere a câmera ou o gatilho de movimento desta entrada. O pareamento continua válido, então o acessório não precisa ser adicionado de novo no app Casa.",
+        "description": "Altere a câmera, o gatilho de movimento e os limites de transmissão desta entrada. O pareamento continua válido, então o acessório não precisa ser adicionado de novo no app Casa.",
         "data": {
           "camera_entity_id": "Câmera",
           "motion_entity_id": "Sensor de movimento",
-          "always_on_motion": "Sempre reportar movimento"
+          "always_on_motion": "Sempre reportar movimento",
+          "max_width": "Largura máxima",
+          "max_height": "Altura máxima",
+          "max_fps": "Taxa de quadros máxima",
+          "reencode": "Recodificar vídeo",
+          "stream_audio": "Incluir áudio"
         },
         "data_description": {
           "camera_entity_id": "Só é possível publicar câmeras capazes de fornecer um stream.",
           "motion_entity_id": "O movimento desse sensor é informado ao HomeKit e dispara as gravações.",
-          "always_on_motion": "Grava continuamente: o HomeKit é informado de que o movimento nunca cessa e abre uma gravação atrás da outra. Ignora o sensor de movimento acima e consome bem mais armazenamento no iCloud."
+          "always_on_motion": "Grava continuamente: o HomeKit é informado de que o movimento nunca cessa e abre uma gravação atrás da outra. Ignora o sensor de movimento acima e consome bem mais armazenamento no iCloud.",
+          "reencode": "Ligado, o vídeo é recodificado exatamente para o que o HomeKit negocia — a opção confiável, e a que faz funcionar câmeras cujo stream o HomeKit não aceita. Custa cerca de um núcleo por câmera 1080p. Desligado, o stream da câmera é repassado como está, apenas corrigindo o nível H.264 acima do aceito; quase não custa CPU — medido em um décimo de núcleo com duas câmeras — mas exige que a câmera já envie uma resolução que o HomeKit tenha recebido na oferta.",
+          "stream_audio": "Envia o áudio da própria câmera ao HomeKit em Opus, junto com o vídeo. Não tem efeito quando a câmera não envia áudio."
         }
       }
     },

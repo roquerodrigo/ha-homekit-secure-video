@@ -86,12 +86,12 @@ The `data/` package holds one TypedDict/dataclass per file. `data/__init__.py` d
 ### Config flow surface
 
 - `async_step_user` — camera selection; rejects a camera without `CameraEntityFeature.STREAM`, sets unique_id from the camera entity id (which is what enforces one camera per entry), reserves the port.
-- `async_step_reconfigure` — change the camera or the motion trigger without deleting the entry. Changing the camera moves the entry's unique id with it and keeps the port and pairing, so the accessory does not have to be added to the Home app again; a camera another entry already publishes is rejected on the field. The motion sensor is offered as a `suggested_value`, never a `default` — a default is re-applied on submit, which makes the field impossible to clear.
+- `async_step_reconfigure` — change the camera, the motion trigger **and the streaming options** without deleting the entry. Changing the camera moves the entry's unique id with it and keeps the port and pairing, so the accessory does not have to be added to the Home app again; a camera another entry already publishes is rejected on the field. The motion sensor is offered as a `suggested_value`, never a `default` — a default is re-applied on submit, which makes the field impossible to clear.
 - `async_get_options_flow` — returns `HomeKitSecureVideoOptionsFlow` from `options_flow.py` (one class per file).
 
 ### Options flow
 
-`options_flow.py` caps `max_width`, `max_height` and `max_fps`, and carries the `reencode` and `stream_audio` switches. The caps filter `SUPPORTED_RESOLUTIONS` before it is advertised to HomeKit. Changing any of them triggers `async_reload_entry`, which republishes the accessory.
+`streaming_options.py` owns the schema fields for `max_width`, `max_height`, `max_fps`, `reencode` and `stream_audio`, plus `as_numbers` (the dropdowns hand back strings) and `STREAMING_OPTION_KEYS`. Both `options_flow.py` and the reconfigure step build from it, so the two screens never drift apart; the reconfigure step splits its submission on `STREAMING_OPTION_KEYS` and writes those to `entry.options` and the rest to `entry.data`. The caps filter `SUPPORTED_RESOLUTIONS` before it is advertised to HomeKit. Changing any of them triggers `async_reload_entry`, which republishes the accessory.
 
 ### Live streaming
 

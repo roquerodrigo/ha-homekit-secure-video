@@ -19,16 +19,23 @@
       },
       "reconfigure": {
         "title": "Reconfigure camera",
-        "description": "Change the camera or the motion trigger of this entry. The pairing stays valid, so the accessory does not need to be added to the Home app again.",
+        "description": "Change the camera, the motion trigger and the streaming limits of this entry. The pairing stays valid, so the accessory does not need to be added to the Home app again.",
         "data": {
           "camera_entity_id": "Camera",
           "motion_entity_id": "Motion sensor",
-          "always_on_motion": "Always report motion"
+          "always_on_motion": "Always report motion",
+          "max_width": "Maximum width",
+          "max_height": "Maximum height",
+          "max_fps": "Maximum frame rate",
+          "reencode": "Re-encode video",
+          "stream_audio": "Include audio"
         },
         "data_description": {
           "camera_entity_id": "Only cameras that can serve a stream can be published.",
           "motion_entity_id": "Motion from this sensor is reported to HomeKit and triggers recordings.",
-          "always_on_motion": "Records continuously: HomeKit is told motion never stops, so it keeps opening one recording after another. Ignores the motion sensor above and uses considerably more iCloud storage."
+          "always_on_motion": "Records continuously: HomeKit is told motion never stops, so it keeps opening one recording after another. Ignores the motion sensor above and uses considerably more iCloud storage.",
+          "reencode": "On, the video is re-encoded to exactly what HomeKit negotiates — the reliable choice, and the one that makes cameras work whose own stream HomeKit will not take. Costs about one CPU core per 1080p camera. Off, the camera's stream is passed through untouched apart from correcting an over-spec H.264 level, which is nearly free — measured at a tenth of a core for two cameras — but needs a camera that already sends a resolution HomeKit was offered.",
+          "stream_audio": "Sends the camera's own audio to HomeKit as Opus, alongside the video. Has no effect when the camera sends no audio."
         }
       }
     },

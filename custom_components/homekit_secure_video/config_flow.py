@@ -28,8 +28,15 @@ from .const import (
     LAST_HAP_PORT,
 )
 from .options_flow import HomeKitSecureVideoOptionsFlow
+from .streaming_options import (
+    STREAMING_OPTION_KEYS,
+    as_numbers,
+    streaming_options_fields,
+)
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from .data import HomeKitSecureVideoConfigData, HomeKitSecureVideoConfigEntry
 
 
@@ -37,6 +44,7 @@ def _camera_schema(
     default_config: HomeKitSecureVideoConfigData | None = None,
     *,
     include_reencode: bool = False,
+    streaming_options: Mapping[str, object] | None = None,
 ) -> vol.Schema:
     """
     Build the camera selection schema, optionally pre-filled.
@@ -82,7 +90,24 @@ def _camera_schema(
         fields[vol.Optional(CONF_REENCODE, default=DEFAULT_REENCODE)] = (
             selector.BooleanSelector()
         )
+    if streaming_options is not None:
+        fields.update(streaming_options_fields(streaming_options))
     return vol.Schema(fields)
+
+
+def _split_streaming_options(
+    user_input: dict[str, object],
+) -> tuple[dict[str, object], dict[str, int | bool]]:
+    """Separate what belongs on the entry's data from what belongs on its options."""
+    camera = {
+        key: value
+        for key, value in user_input.items()
+        if key not in STREAMING_OPTION_KEYS
+    }
+    streaming = {
+        key: value for key, value in user_input.items() if key in STREAMING_OPTION_KEYS
+    }
+    return camera, as_numbers(streaming)  # type: ignore[arg-type]
 
 
 def _is_port_free(port: int) -> bool:
@@ -170,6 +195,7 @@ class HomeKitSecureVideoFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             if not errors and self._is_taken_by_another_entry(camera_entity_id, entry):
                 errors = {CONF_CAMERA_ENTITY_ID: "already_configured"}
             if not errors:
+                camera, streaming = _split_streaming_options(dict(user_input))
                 # The camera block is replaced rather than merged so clearing
                 # the motion sensor actually drops it from the entry.
                 return self.async_update_reload_and_abort(
@@ -177,16 +203,26 @@ class HomeKitSecureVideoFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     unique_id=camera_entity_id,
                     title=self._camera_name(camera_entity_id),
                     data={
-                        **dict(user_input),
+                        **camera,
                         CONF_PORT: existing["port"],
                         CONF_PAIRING_CODE: existing["pairing_code"],
                         CONF_SETUP_ID: existing["setup_id"],
                     },
+                    options={**entry.options, **streaming},
                 )
+
+        camera_defaults = existing
+        streaming_defaults: Mapping[str, object] = entry.options
+        if user_input is not None:
+            submitted, streaming = _split_streaming_options(dict(user_input))
+            camera_defaults = cast("HomeKitSecureVideoConfigData", submitted)
+            streaming_defaults = streaming
 
         return self.async_show_form(
             step_id="reconfigure",
-            data_schema=_camera_schema(user_input or existing),
+            data_schema=_camera_schema(
+                camera_defaults, streaming_options=streaming_defaults
+            ),
             errors=errors,
         )
 
