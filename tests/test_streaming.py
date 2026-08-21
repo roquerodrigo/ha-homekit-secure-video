@@ -19,6 +19,14 @@ STREAM_REQUEST = {
 }
 
 
+def _ffmpeg_process(returncode=None):
+    """Stand in for ffmpeg, with a stderr the session can drain."""
+    process = MagicMock(returncode=returncode)
+    process.stderr.readline = AsyncMock(return_value=b"")
+    process.wait = AsyncMock(return_value=returncode or 0)
+    return process
+
+
 @pytest.fixture
 def command():
     return HomeKitSecureVideoLiveStreamCommand(
@@ -58,7 +66,7 @@ def test_command_sizes_the_buffer_from_the_bitrate(command):
 
 
 async def test_session_reports_a_running_process(command):
-    process = MagicMock(returncode=None)
+    process = _ffmpeg_process()
     with patch(
         "asyncio.create_subprocess_exec", AsyncMock(return_value=process)
     ) as spawn:
@@ -70,7 +78,7 @@ async def test_session_reports_a_running_process(command):
 
 
 async def test_session_reports_a_process_that_died_immediately(command):
-    process = MagicMock(returncode=1)
+    process = _ffmpeg_process(returncode=1)
     with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=process)):
         session = HomeKitSecureVideoLiveStreamSession("ffmpeg", command)
         assert not await session.async_start()
@@ -83,8 +91,7 @@ async def test_session_survives_a_missing_binary(command):
 
 
 async def test_session_terminates_the_process(command):
-    process = MagicMock(returncode=None)
-    process.wait = AsyncMock(return_value=0)
+    process = _ffmpeg_process()
     with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=process)):
         session = HomeKitSecureVideoLiveStreamSession("ffmpeg", command)
         await session.async_start()
@@ -96,7 +103,7 @@ async def test_session_terminates_the_process(command):
 
 
 async def test_session_kills_a_process_that_ignores_terminate(command):
-    process = MagicMock(returncode=None)
+    process = _ffmpeg_process()
     process.wait = AsyncMock(side_effect=[TimeoutError, 0])
     with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=process)):
         session = HomeKitSecureVideoLiveStreamSession("ffmpeg", command)
@@ -108,8 +115,7 @@ async def test_session_kills_a_process_that_ignores_terminate(command):
 
 
 async def test_stopping_a_session_twice_is_harmless(command):
-    process = MagicMock(returncode=None)
-    process.wait = AsyncMock(return_value=0)
+    process = _ffmpeg_process()
     with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=process)):
         session = HomeKitSecureVideoLiveStreamSession("ffmpeg", command)
         await session.async_start()
@@ -282,8 +288,7 @@ def test_audio_is_skipped_when_homekit_negotiated_none():
 
 
 async def test_a_session_reports_ffmpeg_exiting_on_its_own(command):
-    process = MagicMock(returncode=None)
-    process.wait = AsyncMock(return_value=0)
+    process = _ffmpeg_process()
     exited: list[bool] = []
     session = HomeKitSecureVideoLiveStreamSession("ffmpeg", command)
     session.set_exited_callback(lambda: exited.append(True))
@@ -299,8 +304,7 @@ async def test_a_session_reports_ffmpeg_exiting_on_its_own(command):
 
 
 async def test_stopping_a_session_does_not_report_it_as_exited(command):
-    process = MagicMock(returncode=None)
-    process.wait = AsyncMock(return_value=0)
+    process = _ffmpeg_process()
     exited: list[bool] = []
     session = HomeKitSecureVideoLiveStreamSession("ffmpeg", command)
     session.set_exited_callback(lambda: exited.append(True))
@@ -310,3 +314,19 @@ async def test_stopping_a_session_does_not_report_it_as_exited(command):
         await session.async_stop()
 
     assert exited == []
+
+
+async def test_a_session_drains_what_ffmpeg_writes_to_stderr(command):
+    process = _ffmpeg_process()
+    lines = [b"Non-monotonous DTS\n", b"still going\n", b""]
+    process.stderr.readline = AsyncMock(side_effect=lines)
+    session = HomeKitSecureVideoLiveStreamSession("ffmpeg", command)
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=process)):
+        await session.async_start()
+
+    async with asyncio.timeout(5):
+        while process.stderr.readline.await_count < len(lines):
+            await asyncio.sleep(0)
+
+    assert process.stderr.readline.await_count == len(lines)

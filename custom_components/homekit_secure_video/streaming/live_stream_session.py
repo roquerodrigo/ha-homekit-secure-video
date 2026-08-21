@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from .live_stream_command import HomeKitSecureVideoLiveStreamCommand
 
 TERMINATE_TIMEOUT_SECONDS = 5
+STDERR_BUFFER_LIMIT = 64 * 1024
 
 
 class HomeKitSecureVideoLiveStreamSession:
@@ -30,6 +31,7 @@ class HomeKitSecureVideoLiveStreamSession:
         self._command = command
         self._process: asyncio.subprocess.Process | None = None
         self._watcher: asyncio.Task[None] | None = None
+        self._stderr_reader: asyncio.Task[None] | None = None
         self._exited: Callable[[], None] | None = None
 
     def set_exited_callback(self, callback: Callable[[], None]) -> None:
@@ -54,13 +56,35 @@ class HomeKitSecureVideoLiveStreamSession:
                 *arguments,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.PIPE,
+                limit=STDERR_BUFFER_LIMIT,
             )
         except OSError:
             LOGGER.exception("Failed to start ffmpeg for the live stream")
             return False
 
         self._watcher = asyncio.create_task(self._async_watch(self._process))
+        self._stderr_reader = asyncio.create_task(
+            self._async_drain_stderr(self._process)
+        )
         return self.is_running
+
+    async def _async_drain_stderr(self, process: asyncio.subprocess.Process) -> None:
+        """
+        Log what ffmpeg writes to stderr, and keep reading it.
+
+        The pipe is never emptied otherwise, and a source that warns per frame
+        fills it in minutes — the child then blocks in write() forever, with
+        the stream dead and the process still reporting itself as running.
+        """
+        if process.stderr is None:
+            return
+        while True:
+            line = await process.stderr.readline()
+            if not line:
+                return
+            LOGGER.debug(
+                "Live stream ffmpeg: %s", line.decode(errors="replace").rstrip()
+            )
 
     async def _async_watch(self, process: asyncio.subprocess.Process) -> None:
         """
@@ -78,11 +102,11 @@ class HomeKitSecureVideoLiveStreamSession:
     async def async_stop(self) -> None:
         """Terminate ffmpeg, killing it when it ignores the signal."""
         watcher = self._watcher
+        stderr_reader = self._stderr_reader
         self._watcher = None
-        if watcher is not None:
-            watcher.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await watcher
+        self._stderr_reader = None
+        await _cancel(watcher)
+        await _cancel(stderr_reader)
 
         process = self._process
         self._process = None
@@ -99,3 +123,12 @@ class HomeKitSecureVideoLiveStreamSession:
             with contextlib.suppress(ProcessLookupError):
                 process.kill()
             await process.wait()
+
+
+async def _cancel(task: asyncio.Task[None] | None) -> None:
+    """Cancel a task and wait for it to unwind."""
+    if task is None:
+        return
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
