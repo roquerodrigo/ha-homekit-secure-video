@@ -94,10 +94,13 @@ def _selected_tlv(
     channels=1,
     sample_rate=1,
     audio_bitrate=24,
+    prebuffer_bytes=None,
 ) -> str:
     recording = tlv.encode(
         b"\x01",
-        struct.pack("<i", prebuffer),
+        prebuffer_bytes
+        if prebuffer_bytes is not None
+        else struct.pack("<i", prebuffer),
         b"\x02",
         struct.pack("<q", 1),
         b"\x03",
@@ -194,6 +197,13 @@ def test_selected_configuration_rejects_a_missing_section():
 def test_selected_configuration_rejects_a_malformed_blob():
     with pytest.raises(HomeKitSecureVideoRecordingError, match="malformed"):
         HomeKitSecureVideoSelectedConfiguration.from_tlv(to_base64_str(b"\x01"))
+
+
+def test_selected_configuration_rejects_a_short_numeric_field():
+    truncated = _selected_tlv(prebuffer_bytes=b"\x10\x27")
+
+    with pytest.raises(HomeKitSecureVideoRecordingError, match="expected 4"):
+        HomeKitSecureVideoSelectedConfiguration.from_tlv(truncated)
 
 
 def test_selected_configuration_rejects_an_empty_field():
