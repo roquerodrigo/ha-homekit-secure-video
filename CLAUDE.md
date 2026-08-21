@@ -24,8 +24,6 @@ Recording can only be exercised against a real Apple home hub (HomePod or Apple 
 
 Protocol references worth keeping at hand: `homebridge/HAP-NodeJS` (`src/lib/datastream/`, `src/lib/camera/RecordingManagement.ts`), `bauer-andreas/secure-video-specification`, and `koush/scrypted` (`plugins/homekit/src/types/camera/camera-recording.ts`).
 
-Testing recording end to end needs an Apple home hub (HomePod or Apple TV) and an iCloud+ plan with a free camera slot — without them the Home app never offers "Stream & Allow Recording".
-
 ## Verification workflow
 
 **After every code change, always run lint then tests, in that order, before declaring the task done. Either run `scripts/lint` (a thin wrapper that only chains the four commands) or run them directly:**
@@ -73,6 +71,12 @@ The accessory is local and pushes its own changes, so the coordinator runs with 
 
 `pyhap` persists the accessory's key material itself. The file lives at `.storage/homekit_secure_video.<entry_id>.state`, mirroring what the core `homekit` integration does. `async_remove_entry` deletes it, and the "Reset pairing" button stops the accessory, deletes the file and starts it again, which regenerates the pairing code.
 
+### Nothing acquired before a failure survives it
+
+`async_start` takes a listening socket for the data stream and then the reserved HAP port, and the step between them — probing the configured camera — raises `ConfigEntryNotReady` whenever the camera's own integration has not come up yet, which on a restart is routine. **Home Assistant does not call `async_unload_entry` for an entry that never reached `LOADED`**, so nothing releases what a failed attempt took: every retry leaked another listening socket, and the reserved port stayed held until a restart. Two things keep that from coming back — `async_start` stops the manager before re-raising, and `async_setup_entry` registers `entry.async_on_unload(accessory_manager.async_stop)` *before* starting, which is the hook Home Assistant runs in the failed-setup path.
+
+The same shape applies inside the accessory. Recorder work runs on tasks the accessory keeps and cancels in `stop()`, and a stopped accessory starts no recorder: resolving the stream source and probing its audio are both long awaits that sit *before* ffmpeg is spawned, so a task suspended there would otherwise resume after the accessory was dropped and spawn a process nothing owns.
+
 ### What runs in the executor
 
 `AccessoryDriver.__init__` builds a `pyhap` `Loader` that reads JSON off disk, and `add_accessory` reads or writes the persist file. Both go through `async_add_executor_job`; the rest of the lifecycle is async.
@@ -92,13 +96,15 @@ The `data/` package holds one TypedDict/dataclass per file. `data/__init__.py` d
 
 **There is deliberately no options flow.** Two screens for one entry — "Configure" holding the streaming knobs and "Reconfigure" holding the camera — is what users actually trip over: they open one, do not find the field they came for, and conclude it does not exist. `async_get_options_flow` is therefore not implemented, `supports_options` is `False`, and the reconfigure step is the whole editor.
 
-`streaming_options.py` owns the schema fields for `max_width`, `max_height`, `max_fps`, `reencode` and `stream_audio`, plus `as_numbers` (the dropdowns hand back strings) and `STREAMING_OPTION_KEYS`. The reconfigure step splits its submission on that set and writes those keys to `entry.options` and the rest to `entry.data` — the storage split survives, only the second screen is gone. The caps filter `SUPPORTED_RESOLUTIONS` and `RECORDING_RESOLUTIONS` before either is advertised.
+`streaming_options.py` owns the schema fields for `max_width`, `max_height`, `max_fps`, `reencode` and `stream_audio`, plus `as_numbers` (the dropdowns hand back strings) and `STREAMING_OPTION_KEYS`. The reconfigure step splits its submission on that set and writes those keys to `entry.options` and the rest to `entry.data` — the storage split survives, only the second screen is gone. The size caps filter `SUPPORTED_RESOLUTIONS` and `RECORDING_RESOLUTIONS` before either is advertised; the frame-rate cap clamps them instead (see below).
 
 **No update listener either.** `async_update_reload_and_abort` already reloads the entry; an `add_update_listener(async_reload_entry)` on top of it republished the HAP accessory twice for every change, which a paired controller sees as the camera dropping out and coming back.
 
 ### Live streaming
 
-`camera_accessory.start_stream` resolves the RTSP URL through `camera.async_get_stream_source` and hands it to `streaming/`. The ffmpeg command **copies** the source H.264 rather than transcoding — a Raspberry Pi cannot re-encode a 2K stream in real time, and HomeKit accepts every profile we advertise. Video codec profiles and levels must be passed to `pyhap` as the `bytes` values from `pyhap.camera.VIDEO_CODEC_PARAM_*_TYPES`; plain ints blow up inside `pyhap.tlv.encode`.
+`camera_accessory.start_stream` resolves the RTSP URL through `camera.async_get_stream_source` and hands it to `streaming/`. The live command follows the same `reencode` option as recording and re-encodes by default; copying is what the option turns on, and it only rewrites an over-spec H.264 level in the stream header. Video codec profiles and levels must be passed to `pyhap` as the `bytes` values from `pyhap.camera.VIDEO_CODEC_PARAM_*_TYPES`; plain ints blow up inside `pyhap.tlv.encode`.
+
+**The frame-rate cap clamps what is advertised; it must never filter it.** Every entry in `SUPPORTED_RESOLUTIONS` but the Apple Watch one carries 30 fps, so dropping the ones above the cap leaves a single 320x240 entry — or an empty list, which pyhap encodes as a camera advertising no resolution at all, with no error anywhere.
 
 Live audio is a **second output of the same ffmpeg process**, on the port and SRTP key HomeKit negotiates separately from video, encoded with `libopus` at the negotiated sample rate, bitrate, channel count and packet time. It is emitted only when the probed source actually has an audio track and HomeKit picked Opus — mapping a track that is not there makes ffmpeg refuse to start.
 
@@ -128,6 +134,10 @@ Two things that will bite whoever touches this:
 - `fragmented_mp4.py` splits ffmpeg's output into the `ftyp`+`moov` initialization segment and the `moof`+`mdat` fragments. A trailing `mfra` box only exists when the input was a file; live sources never produce one.
 - `recording_session.py` implements `dataSend`: it answers `open`, streams the initialization segment, the prebuffer and then live fragments in ≤262144-byte chunks, and marks the last one with `endOfStream`. The **end of the motion** is what ends a clip — the hub holds the stream open until a fragment says it is the last.
 
+**Nothing but this accessory can be relied on to end a recording.** Every path that marks a session closed — the acknowledgement, the hub's `close` — belongs to the home hub, while every way a delivery ends on its own (the last fragment of the motion event, the recording ceiling, a fragment timeout) does not. A session left in flight is not merely leaked: `_rejection_for` answers `BUSY` to every later `dataSend/open`, so one lost acknowledgement stops the camera recording until the entry is reloaded, with nothing above DEBUG in the log. Three things close that hole and all three are load-bearing: the delivery waits `recording/constants.py`'s `CLOSE_TIMEOUT_SECONDS` for the hub and then closes the stream itself, the delivery task releases the session in a done-callback whatever it ends on, and the data stream server notifies registered listeners from `connection_lost` so a recording whose connection died is released with it.
+
+**A recorder that dies is invisible unless it says so.** `read_segments` simply stops yielding when ffmpeg exits — which `-shortest` guarantees for a camera that reboots — and a request arriving with no recorder running is rejected before a session exists, so nothing re-synchronises on its own. The recorder reports the end of its stream and the accessory starts it again with an exponential backoff, resetting after a run long enough to count as working. For the same reason the recorder is restarted when the negotiated configuration or the audio setting it was spawned with stops matching: both are read once, when ffmpeg starts.
+
 **HAP-python does not give a standalone accessory everything HAP requires.** Two pieces have to be added by hand, and their absence is invisible in the logs — the controller simply treats the accessory as incomplete and refuses to configure it:
 
 - **`ProtocolInformation` (service `A2`) with `Version` = `1.1.0`.** HAP-python has no definition for it at all; it only ever appears inside bridges. Built by hand in `_protocol_information_service`.
@@ -147,12 +157,12 @@ Both were found by diffing our accessory against a working one (see below). Note
 
 **The video is re-encoded, not copied — unless the `reencode` option says otherwise.** Copying is far cheaper, and it was the original design, but it hands HomeKit whatever the camera happens to send: the cameras this was built against ship H.264 level 4.1 and 5.1 at 20 fps, and one of them at 2880x1616 — none of which HomeKit accepts, and all of which it had just negotiated something else for. `libx264 -preset ultrafast` re-encodes 1080p in real time at roughly one core on a Raspberry Pi 5, against a tenth of a core for two cameras in copy mode; `RECORDING_RESOLUTIONS` and the negotiated frame rate keep that bounded. Rewriting only the level in the SPS (`-bsf:v h264_metadata=level=4`) works and costs nothing, but it fixes just one of the three mismatches.
 
-Three things that will bite whoever touches the ffmpeg side:
+Four things that will bite whoever touches the ffmpeg side:
 
 - **Recording keyframes must land on fragment boundaries.** Every fragment has to open on one, so `-g` and `-force_key_frames` are both set from the negotiated fragment length. Leaving it to `frag_keyframe` alone means fragments as long as the camera's own GOP.
 - **The movflag is `default_base_moof`**, not `default_base_is_moof`. The wrong spelling is in a lot of prior art; ffmpeg rejects it outright and nothing records.
 - **`-shortest` is not optional.** The silent audio track is generated by `anullsrc`, which never ends: without it a dead camera leaves ffmpeg alive forever, emitting fragments that carry nothing but silence.
-- **HomeKit will not play a recording without an audio track.** `audio_probe.py` asks ffprobe whether the camera has one, because mapping a track that is not there makes ffmpeg refuse to start.
+- **HomeKit will not play a recording without an audio track.** `source_probe.py` asks ffprobe whether the camera has one, because mapping a track that is not there makes ffmpeg refuse to start. The answer comes from the profile probed when the accessory was published — probing again would hold the recorder lock for up to fifteen seconds while the hub waits, on every start.
 
 ### The `/pairings` guard
 
