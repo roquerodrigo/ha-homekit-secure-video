@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+from pathlib import PurePath
 from typing import TYPE_CHECKING
 
 from ..const import LOGGER
@@ -26,6 +27,18 @@ EMPTY_PROFILE: HomeKitSecureVideoSourceProfile = {
 }
 
 
+def _ffprobe_binary(ffmpeg_binary: str) -> str:
+    """
+    Return the ffprobe that sits beside the configured ffmpeg.
+
+    Only the file name is rewritten: a build whose directory also carries the
+    word (``/usr/lib/jellyfin-ffmpeg/ffmpeg``) would otherwise be turned into a
+    directory that does not exist.
+    """
+    path = PurePath(ffmpeg_binary)
+    return str(path.with_name(path.name.replace("ffmpeg", "ffprobe")))
+
+
 async def async_probe_source(
     ffmpeg_binary: str, input_source: str
 ) -> HomeKitSecureVideoSourceProfile:
@@ -37,7 +50,7 @@ async def async_probe_source(
     advertised set produces a stream the controller cannot use. Reading it back
     is the only way to see that mismatch.
     """
-    ffprobe = ffmpeg_binary.replace("ffmpeg", "ffprobe")
+    ffprobe = _ffprobe_binary(ffmpeg_binary)
     arguments = [
         "-v",
         "error",
