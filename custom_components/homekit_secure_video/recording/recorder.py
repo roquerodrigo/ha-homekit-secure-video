@@ -12,6 +12,8 @@ from .fragmented_mp4 import read_segments
 from .prebuffer import HomeKitSecureVideoPrebuffer
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ..data import HomeKitSecureVideoRecorderDiagnostics
     from .ffmpeg_recording_command import HomeKitSecureVideoRecordingCommand
     from .selected_configuration import HomeKitSecureVideoSelectedConfiguration
@@ -38,6 +40,11 @@ class HomeKitSecureVideoRecorder:
         self._prebuffer: HomeKitSecureVideoPrebuffer | None = None
         self._initialization_segment: bytes | None = None
         self._subscribers: list[asyncio.Queue[bytes]] = []
+        self._stream_ended: Callable[[], None] | None = None
+
+    def set_stream_ended_callback(self, callback: Callable[[], None]) -> None:
+        """Register the callback fired when ffmpeg stops on its own."""
+        self._stream_ended = callback
 
     @property
     def is_running(self) -> bool:
@@ -149,7 +156,16 @@ class HomeKitSecureVideoRecorder:
                 self._prebuffer.append(payload)
             self._publish(payload)
 
-        LOGGER.debug("Recorder stream ended")
+        # Reaching here means ffmpeg ended by itself — a camera reboot or a
+        # dropped RTSP session — and the segment it left behind describes a
+        # stream that no longer exists.
+        self._initialization_segment = None
+        LOGGER.warning(
+            "The recorder stopped on its own, ffmpeg exit code %s",
+            process.returncode,
+        )
+        if self._stream_ended is not None:
+            self._stream_ended()
 
     def _publish(self, fragment: bytes) -> None:
         """Hand a fragment to every subscriber, dropping it when one is behind."""
