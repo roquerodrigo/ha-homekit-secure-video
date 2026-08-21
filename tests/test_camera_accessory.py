@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 from homeassistant.const import STATE_OFF, STATE_ON
+from pyhap.camera import STREAMING_STATUS
 
 from custom_components.homekit_secure_video.accessory import (
     HomeKitSecureVideoCameraAccessory,
@@ -17,6 +18,7 @@ from custom_components.homekit_secure_video.recording import (
 from .conftest import CAMERA_ENTITY_ID, MOTION_ENTITY_ID
 
 MODULE = "custom_components.homekit_secure_video.accessory.camera_accessory"
+STREAMING_AVAILABLE = STREAMING_STATUS["AVAILABLE"]
 EMPTY_SOURCE = {
     "video_codec": None,
     "video_profile": None,
@@ -916,3 +918,27 @@ async def test_a_stopped_accessory_starts_no_recorder(hass, accessory):
         await accessory._async_sync_recorder()
 
     recorder.async_start.assert_not_awaited()
+
+
+async def test_a_live_stream_that_ends_frees_its_slot(accessory):
+    session = MagicMock()
+    session.async_start = AsyncMock(return_value=True)
+    session.is_running = True
+    session_info = _session_info()
+
+    with (
+        patch(
+            f"{MODULE}.camera.async_get_stream_source",
+            AsyncMock(return_value="rtsp://camera/stream"),
+        ),
+        patch(f"{MODULE}.HomeKitSecureVideoLiveStreamSession", return_value=session),
+    ):
+        await accessory.start_stream(session_info, STREAM_REQUEST)
+
+    assert accessory.is_streaming
+    session.set_exited_callback.call_args.args[0]()
+
+    assert not accessory.is_streaming
+    assert (
+        accessory._streaming_status[session_info["stream_idx"]] == STREAMING_AVAILABLE
+    )

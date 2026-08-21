@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -278,3 +279,34 @@ def test_audio_is_skipped_when_homekit_negotiated_none():
     arguments = _audio_command(STREAM_REQUEST).arguments
 
     assert "-c:a" not in arguments
+
+
+async def test_a_session_reports_ffmpeg_exiting_on_its_own(command):
+    process = MagicMock(returncode=None)
+    process.wait = AsyncMock(return_value=0)
+    exited: list[bool] = []
+    session = HomeKitSecureVideoLiveStreamSession("ffmpeg", command)
+    session.set_exited_callback(lambda: exited.append(True))
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=process)):
+        assert await session.async_start()
+
+    async with asyncio.timeout(5):
+        while not exited:
+            await asyncio.sleep(0)
+
+    assert exited == [True]
+
+
+async def test_stopping_a_session_does_not_report_it_as_exited(command):
+    process = MagicMock(returncode=None)
+    process.wait = AsyncMock(return_value=0)
+    exited: list[bool] = []
+    session = HomeKitSecureVideoLiveStreamSession("ffmpeg", command)
+    session.set_exited_callback(lambda: exited.append(True))
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=process)):
+        await session.async_start()
+        await session.async_stop()
+
+    assert exited == []

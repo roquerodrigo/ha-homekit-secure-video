@@ -10,6 +10,8 @@ from ..const import LOGGER
 from ..redaction import redact_credentials
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from .live_stream_command import HomeKitSecureVideoLiveStreamCommand
 
 TERMINATE_TIMEOUT_SECONDS = 5
@@ -27,6 +29,12 @@ class HomeKitSecureVideoLiveStreamSession:
         self._ffmpeg_binary = ffmpeg_binary
         self._command = command
         self._process: asyncio.subprocess.Process | None = None
+        self._watcher: asyncio.Task[None] | None = None
+        self._exited: Callable[[], None] | None = None
+
+    def set_exited_callback(self, callback: Callable[[], None]) -> None:
+        """Register the callback fired when ffmpeg exits on its own."""
+        self._exited = callback
 
     @property
     def is_running(self) -> bool:
@@ -51,10 +59,31 @@ class HomeKitSecureVideoLiveStreamSession:
             LOGGER.exception("Failed to start ffmpeg for the live stream")
             return False
 
+        self._watcher = asyncio.create_task(self._async_watch(self._process))
         return self.is_running
+
+    async def _async_watch(self, process: asyncio.subprocess.Process) -> None:
+        """
+        Report ffmpeg exiting on its own.
+
+        Nothing else reaps the session: the controller may never send a stop,
+        and the stream management slot it holds stays marked as streaming until
+        someone does.
+        """
+        await process.wait()
+        LOGGER.debug("The live stream ended, ffmpeg exit code %s", process.returncode)
+        if self._exited is not None:
+            self._exited()
 
     async def async_stop(self) -> None:
         """Terminate ffmpeg, killing it when it ignores the signal."""
+        watcher = self._watcher
+        self._watcher = None
+        if watcher is not None:
+            watcher.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await watcher
+
         process = self._process
         self._process = None
         if process is None or process.returncode is not None:
