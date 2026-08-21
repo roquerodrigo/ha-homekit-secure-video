@@ -18,6 +18,7 @@ from custom_components.homekit_secure_video.exceptions import (
 )
 
 CLIENT_ADDRESS = "('192.168.1.10', 55123)"
+CLIENT_PEER = ("192.168.1.10", 55123)
 SHARED_KEY = bytes(range(32))
 CONTROLLER_SALT = bytes(range(32, 64))
 DATA_STREAM_PORT = 45678
@@ -53,10 +54,10 @@ def test_setup_write_answers_with_the_listening_port(
     keys = MagicMock(accessory_key_salt=b"\xaa" * 32)
     data_stream_server.prepare_session.return_value = keys
 
-    response = tlv.decode(
-        transport_service.handle_setup_write(_setup_request(), CLIENT_ADDRESS),
-        from_base64=True,
+    answer, _readable = transport_service.handle_setup_write(
+        _setup_request(), CLIENT_ADDRESS
     )
+    response = tlv.decode(answer, from_base64=True)
 
     assert response[b"\x01"] == b"\x00"
     assert tlv.decode(response[b"\x02"])[b"\x01"] == struct.pack("<H", DATA_STREAM_PORT)
@@ -83,13 +84,14 @@ def test_readable_value_hides_the_accessory_key_salt(
     data_stream_server.prepare_session.return_value = MagicMock(
         accessory_key_salt=b"\xaa" * 32
     )
-    transport_service.handle_setup_write(_setup_request(), CLIENT_ADDRESS)
-
-    readable = transport_service.service.get_characteristic(
+    characteristic = transport_service.service.get_characteristic(
         "Setup Data Stream Transport"
-    ).value
+    )
 
-    assert b"\x03" not in tlv.decode(readable, from_base64=True)
+    answer = characteristic.client_update_value(_setup_request(), CLIENT_PEER)
+
+    assert tlv.decode(answer, from_base64=True)[b"\x03"] == b"\xaa" * 32
+    assert b"\x03" not in tlv.decode(characteristic.value, from_base64=True)
 
 
 def test_setup_write_rejects_an_unknown_command(transport_service):
@@ -142,12 +144,14 @@ def test_characteristic_write_carries_the_writing_session(transport_service):
     )
     seen: list[str] = []
     characteristic._setup_callback = lambda _value, address: (
-        seen.append(address) or "ok"
-    )
+        seen.append(address),
+        ("ok", "readable"),
+    )[1]
 
     result = characteristic.client_update_value(
         _setup_request(), ("192.168.1.10", 55123)
     )
 
     assert result == "ok"
+    assert characteristic.value == "readable"
     assert seen == ["('192.168.1.10', 55123)"]
