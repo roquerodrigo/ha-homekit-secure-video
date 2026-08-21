@@ -790,3 +790,85 @@ async def test_a_healthy_recorder_run_resets_the_backoff(accessory):
         accessory._handle_recorder_stream_ended()
 
     assert accessory._next_recorder_restart_delay() == 5
+
+
+def _enable_recording(accessory):
+    """Enable recording the way a paired controller would."""
+    from .test_recording_configuration import _selected_tlv
+
+    service = accessory._recording_management.service
+    for name, value in (
+        ("Active", 1),
+        ("SelectedCameraRecordingConfiguration", _selected_tlv()),
+    ):
+        characteristic = service.get_characteristic(name)
+        characteristic.broker = MagicMock()
+        characteristic.client_update_value(value)
+
+
+def _write_recording_audio(accessory, value):
+    """Write RecordingAudioActive the way a paired controller would."""
+    characteristic = accessory._recording_management.service.get_characteristic(
+        "RecordingAudioActive"
+    )
+    characteristic.broker = MagicMock()
+    characteristic.client_update_value(value)
+
+
+def _mock_recorder(accessory):
+    """Replace the recorder with one that reports itself running once started."""
+    recorder = MagicMock()
+    recorder.is_running = False
+
+    async def start(*_args, **_kwargs):
+        recorder.is_running = True
+        return True
+
+    recorder.async_start = AsyncMock(side_effect=start)
+    recorder.async_stop = AsyncMock()
+    accessory._recorder = recorder
+    return recorder
+
+
+async def test_turning_recording_audio_off_restarts_the_recorder(hass, accessory):
+    recorder = _mock_recorder(accessory)
+
+    with (
+        patch(
+            f"{MODULE}.camera.async_get_stream_source",
+            AsyncMock(return_value="rtsp://camera"),
+        ),
+        patch(f"{MODULE}.async_source_has_audio", AsyncMock(return_value=True)),
+    ):
+        _enable_recording(accessory)
+        await hass.async_block_till_done()
+        started = recorder.async_start.await_count
+        assert started >= 1
+        assert recorder.async_start.await_args.args[0].source_has_audio is True
+
+        _write_recording_audio(accessory, 0)
+        await hass.async_block_till_done()
+
+    assert recorder.async_start.await_count == started + 1
+    assert recorder.async_start.await_args.args[0].source_has_audio is False
+
+
+async def test_an_unchanged_setting_leaves_the_recorder_alone(hass, accessory):
+    recorder = _mock_recorder(accessory)
+
+    with (
+        patch(
+            f"{MODULE}.camera.async_get_stream_source",
+            AsyncMock(return_value="rtsp://camera"),
+        ),
+        patch(f"{MODULE}.async_source_has_audio", AsyncMock(return_value=True)),
+    ):
+        _enable_recording(accessory)
+        await hass.async_block_till_done()
+        started = recorder.async_start.await_count
+
+        _write_recording_audio(accessory, 1)
+        await hass.async_block_till_done()
+        await accessory._async_sync_recorder()
+
+    assert recorder.async_start.await_count == started
