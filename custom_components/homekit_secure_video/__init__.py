@@ -49,6 +49,10 @@ async def async_setup_entry(
             coordinator.async_handle_status_change
         )
     )
+    # Registered before the accessory starts: Home Assistant does not unload an
+    # entry that never finished setting up, and this is what releases the HAP
+    # port and the data stream socket when it does not.
+    entry.async_on_unload(accessory_manager.async_stop)
 
     try:
         await accessory_manager.async_start()

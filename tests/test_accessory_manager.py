@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from custom_components.homekit_secure_video.accessory import (
     HomeKitSecureVideoAccessoryManager,
 )
@@ -166,3 +168,43 @@ async def test_a_failing_shutdown_step_does_not_block_the_unload(
     await setup_integration.runtime_data.accessory_manager.async_stop()
 
     assert mock_accessory_driver.async_stop.await_count >= 1
+
+
+async def test_a_deferred_setup_releases_what_it_acquired(
+    hass,
+    config_entry,
+    mock_accessory_driver,
+    mock_camera_accessory,
+    mock_data_stream_server,
+):
+    from homeassistant.exceptions import HomeAssistantError
+
+    with patch(
+        "custom_components.homekit_secure_video.accessory.manager"
+        ".camera.async_get_stream_source",
+        AsyncMock(side_effect=HomeAssistantError("Camera not found")),
+    ):
+        await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    mock_data_stream_server.async_stop.assert_awaited()
+
+
+async def test_a_data_stream_server_that_will_not_start_releases_the_driver(
+    hass, config_entry, mock_accessory_driver, mock_camera_accessory
+):
+    manager = HomeKitSecureVideoAccessoryManager(hass, config_entry)
+    with (
+        patch.object(
+            manager._data_stream_server,
+            "async_start",
+            AsyncMock(side_effect=OSError("address in use")),
+        ),
+        patch.object(
+            manager._data_stream_server, "async_stop", AsyncMock()
+        ) as stop_server,
+        pytest.raises(OSError, match="address in use"),
+    ):
+        await manager.async_start()
+
+    stop_server.assert_awaited_once()
