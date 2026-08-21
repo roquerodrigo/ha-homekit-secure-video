@@ -15,6 +15,20 @@ CASES = [
     ),
     ("rtsp://192.168.1.10:554/stream", "rtsp://192.168.1.10:554/stream"),
     ("http://camera.local/snapshot.jpg", "http://camera.local/snapshot.jpg"),
+    (
+        "http://cam/flv?port=1935&app=bcs&stream=channel0.bcs&user=admin&password=hunter2",
+        "http://cam/flv?port=1935&app=bcs&stream=channel0.bcs&user=***&password=***",
+    ),
+    (
+        "rtmp://cam/bcs/channel0_main.bcs?channel=0&stream=0&user=admin&password=hunter2",
+        "rtmp://cam/bcs/channel0_main.bcs?channel=0&stream=0&user=***&password=***",
+    ),
+    (
+        "-i http://cam/flv?token=abc123 -c:v copy",
+        "-i http://cam/flv?token=*** -c:v copy",
+    ),
+    ("http://cam/flv?username=admin", "http://cam/flv?username=***"),
+    ("http://cam/flv?channel=0&stream=0", "http://cam/flv?channel=0&stream=0"),
     ("", ""),
 ]
 
