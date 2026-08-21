@@ -248,10 +248,11 @@ Both gates must stay green:
   integrations** (omit it in core integrations only) and must parse as
   `AwesomeVersion` — CalVer or SemVer.
 - `manifest.json` also declares `integration_type`. JSON carries no comments,
-  so the choice is recorded here: this repository ships `service` because one
-  config entry represents the HomeKit bridge this integration publishes, not a
-  physical device — `device` is for an entry that is a single device and `hub`
-  for a gateway exposing several.
+  so the choice is recorded here: this repository ships `device` because one
+  config entry publishes exactly one camera as one HomeKit accessory, and that
+  accessory is the single device the entry registers — `hub` is for a gateway
+  exposing several, and `service` for an entry that is not a device at all.
+  There is deliberately no bridge (see `CLAUDE.md`).
 - `hacs.json` at the repo root pins the minimum HA core via the
   `homeassistant` key. This is the third HA pin (see `CLAUDE.md`).
 - Brand assets live under `custom_components/<domain>/brand/` — `icon.png`,
