@@ -45,10 +45,10 @@ async def async_probe_source(
     """
     Return what the camera sends: codec, profile, resolution and frame rate.
 
-    HomeKit negotiates against what the accessory advertises, and the video is
-    copied rather than re-encoded — so a camera sending something outside the
-    advertised set produces a stream the controller cannot use. Reading it back
-    is the only way to see that mismatch.
+    Nothing is advertised from this — the accessory offers a fixed set and
+    re-encodes to it. It answers the questions that fixed set cannot: whether
+    the stream may be copied through instead, whether there is an audio track
+    to map, and what the repair issues report.
     """
     ffprobe = _ffprobe_binary(ffmpeg_binary)
     arguments = [
