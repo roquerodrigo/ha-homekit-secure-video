@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import struct
+
 import pytest
 
 from custom_components.homekit_secure_video.datastream import opack
@@ -110,9 +112,13 @@ def test_decodes_a_uuid_as_raw_bytes():
 
 
 def test_decodes_a_date_into_a_unix_timestamp():
-    import struct
-
     assert opack.decode(b"\x06" + struct.pack("<d", 0.0)) == 978307200
+
+
+def test_decodes_a_back_reference_placed_after_a_date():
+    # {"t": <date>, "a": "x", "b": <pointer index 3 -> "x">}
+    encoded = b"\xe3\x41t\x06" + struct.pack("<d", 0.0) + b"\x41a\x41x\x41b\xa3"
+    assert opack.decode(encoded) == {"t": 978307200, "a": "x", "b": "x"}
 
 
 def test_rejects_trailing_bytes():
