@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 STOP_TIMEOUT_SECONDS = 10
 
 
-async def _bounded(what: str, task: Coroutine[None, None, None]) -> None:
+async def _bounded(what: str, task: Coroutine[None, None, None]) -> bool:
     """Await one shutdown step, giving up rather than hanging the unload."""
     LOGGER.debug("Stopping the %s", what)
     try:
@@ -50,6 +50,9 @@ async def _bounded(what: str, task: Coroutine[None, None, None]) -> None:
         LOGGER.warning("Timed out stopping the %s; carrying on", what)
     except Exception:  # noqa: BLE001 -- a failed step must not block the rest
         LOGGER.exception("Failed to stop the %s; carrying on", what)
+    else:
+        return True
+    return False
 
 
 EMPTY_STATUS: HomeKitSecureVideoAccessoryStatus = {
@@ -203,7 +206,22 @@ class HomeKitSecureVideoAccessoryManager:
         return unsubscribe
 
     async def async_start(self) -> None:
-        """Publish the accessory and start advertising it over mDNS."""
+        """
+        Publish the accessory and start advertising it over mDNS.
+
+        Whatever was acquired is released again when a step fails: the data
+        stream server holds a listening socket and the driver holds the
+        reserved HAP port, and a retried setup that leaves them behind runs out
+        of both.
+        """
+        try:
+            await self._async_start()
+        except Exception:
+            await self.async_stop()
+            raise
+
+    async def _async_start(self) -> None:
+        """Build the driver and the accessory, and start them."""
         config = cast("HomeKitSecureVideoConfigData", self._entry.data)
         source_ip = await async_get_source_ip(self._hass)
         async_zeroconf = async_get_async_zeroconf(self._hass)
@@ -249,8 +267,12 @@ class HomeKitSecureVideoAccessoryManager:
 
         async_clear_camera_source_issues(self._hass, self._entry)
         await _bounded("data stream server", self._data_stream_server.async_stop())
-        if driver is not None:
-            await _bounded("accessory driver", driver.async_stop())
+        if driver is not None and not await _bounded(
+            "accessory driver", driver.async_stop()
+        ):
+            # pyhap unregisters mDNS before it closes the HAP socket, so a step
+            # that gave up halfway can leave the reserved port held.
+            driver.http_server.async_stop()
         LOGGER.debug("Stopped the accessory of %s", self._entry.title)
 
     async def async_reset_pairing(self) -> None:
