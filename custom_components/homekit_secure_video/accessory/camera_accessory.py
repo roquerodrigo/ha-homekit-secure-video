@@ -356,7 +356,12 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         if not await session.async_start():
             return False
 
-        self._stream_sessions[str(session_info["id"])] = session
+        session_id = str(session_info["id"])
+        stream_index = session_info["stream_idx"]
+        session.set_exited_callback(
+            lambda: self._handle_stream_session_exited(session_id, stream_index)
+        )
+        self._stream_sessions[session_id] = session
         self._notify_status_changed()
         return True
 
@@ -368,6 +373,14 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         if session is not None:
             await session.async_stop()
             self._notify_status_changed()
+
+    def _handle_stream_session_exited(self, session_id: str, stream_index: int) -> None:
+        """Free the stream management slot of a session whose ffmpeg exited."""
+        if self._stream_sessions.pop(session_id, None) is None:
+            return
+        LOGGER.debug("Live stream session %s ended on its own", session_id)
+        self.set_streaming_available(stream_index)
+        self._notify_status_changed()
 
     async def reconfigure_stream(
         self,
