@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -703,8 +704,6 @@ async def test_a_matching_source_honours_the_copy_option(accessory):
 
 async def test_a_burst_of_writes_starts_one_recorder(hass, accessory):
     """HomeKit configures the camera with several writes in a row."""
-    import asyncio
-
     from custom_components.homekit_secure_video.recording import (
         HomeKitSecureVideoSelectedConfiguration,
     )
@@ -872,3 +871,48 @@ async def test_an_unchanged_setting_leaves_the_recorder_alone(hass, accessory):
         await accessory._async_sync_recorder()
 
     assert recorder.async_start.await_count == started
+
+
+async def test_stop_cancels_a_pending_recorder_sync(hass, accessory):
+    recorder = _mock_recorder(accessory)
+    resolving = asyncio.Event()
+    release = asyncio.Event()
+
+    async def stream_source(*_args, **_kwargs):
+        resolving.set()
+        await release.wait()
+        return "rtsp://camera"
+
+    with (
+        patch(f"{MODULE}.camera.async_get_stream_source", stream_source),
+        patch(f"{MODULE}.async_source_has_audio", AsyncMock(return_value=False)),
+    ):
+        _enable_recording(accessory)
+        async with asyncio.timeout(5):
+            await resolving.wait()
+
+        stopping = asyncio.create_task(accessory.stop())
+        await asyncio.sleep(0)
+        release.set()
+        await asyncio.wait_for(stopping, 5)
+        await hass.async_block_till_done()
+
+    recorder.async_start.assert_not_awaited()
+
+
+async def test_a_stopped_accessory_starts_no_recorder(hass, accessory):
+    recorder = _mock_recorder(accessory)
+    await accessory.stop()
+
+    with (
+        patch(
+            f"{MODULE}.camera.async_get_stream_source",
+            AsyncMock(return_value="rtsp://camera"),
+        ),
+        patch(f"{MODULE}.async_source_has_audio", AsyncMock(return_value=False)),
+    ):
+        _enable_recording(accessory)
+        await hass.async_block_till_done()
+        await accessory._async_sync_recorder()
+
+    recorder.async_start.assert_not_awaited()
