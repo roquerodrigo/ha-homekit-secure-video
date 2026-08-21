@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from typing import TYPE_CHECKING
 
 from ..const import LOGGER
@@ -137,6 +138,14 @@ class HomeKitSecureVideoRecordingSession:
             {"streamId": self._stream_id, "reason": int(reason)},
         )
         self._finish()
+
+    async def async_stop(self) -> None:
+        """Release the session and wait for its delivery to unwind."""
+        task = self._task
+        self._finish()
+        if task is not None:
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
     def abandon(self) -> None:
         """Release the session because its connection went away."""

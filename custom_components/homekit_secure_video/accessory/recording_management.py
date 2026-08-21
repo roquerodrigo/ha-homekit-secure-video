@@ -180,6 +180,13 @@ class HomeKitSecureVideoRecordingManagementService:
         if self._session is not None:
             self._session.close(reason)
 
+    async def async_stop(self) -> None:
+        """Tear down the recording in flight before the accessory goes away."""
+        session = self._session
+        if session is not None:
+            session.close(HomeKitSecureVideoDataStreamCloseReason.CANCELLED)
+            await session.async_stop()
+
     def _build_service(self) -> Service:
         """Build the service with the characteristics HomeKit reads and writes."""
         service = Service(SERVICE_UUID, "CameraRecordingManagement")
