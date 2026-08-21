@@ -627,3 +627,43 @@ async def test_always_on_motion_reports_motion_without_a_sensor(
         is True
     )
     await accessory.stop()
+
+
+async def test_a_mismatched_source_is_re_encoded_despite_the_option(accessory):
+    from custom_components.homekit_secure_video.recording import (
+        HomeKitSecureVideoSelectedConfiguration,
+    )
+
+    from .test_recording_configuration import _selected_tlv
+
+    configuration = HomeKitSecureVideoSelectedConfiguration.from_tlv(_selected_tlv())
+    accessory._reencode = False
+    accessory._source_profile = {
+        **accessory._source_profile,
+        "video_codec": "h264",
+        "width": 896,
+        "height": 512,
+        "frame_rate": 20.0,
+    }
+
+    assert accessory._reencode_recording(configuration) is True
+
+
+async def test_a_matching_source_honours_the_copy_option(accessory):
+    from custom_components.homekit_secure_video.recording import (
+        HomeKitSecureVideoSelectedConfiguration,
+    )
+
+    from .test_recording_configuration import _selected_tlv
+
+    configuration = HomeKitSecureVideoSelectedConfiguration.from_tlv(_selected_tlv())
+    accessory._reencode = False
+    accessory._source_profile = {
+        **accessory._source_profile,
+        "video_codec": "h264",
+        "width": configuration.width,
+        "height": configuration.height,
+        "frame_rate": float(configuration.frame_rate),
+    }
+
+    assert accessory._reencode_recording(configuration) is False

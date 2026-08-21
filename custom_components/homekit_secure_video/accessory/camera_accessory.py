@@ -39,6 +39,7 @@ from ..recording import (
     HomeKitSecureVideoSupportedConfiguration,
     async_probe_source,
     async_source_has_audio,
+    source_matches_configuration,
 )
 from ..recording.constants import (
     DEFAULT_FRAGMENT_MILLISECONDS,
@@ -72,6 +73,9 @@ if TYPE_CHECKING:
         HomeKitSecureVideoStreamSessionInfo,
     )
     from ..datastream import HomeKitSecureVideoDataStreamServer
+    from ..recording.selected_configuration import (
+        HomeKitSecureVideoSelectedConfiguration,
+    )
     from .driver import HomeKitSecureVideoAccessoryDriver
 
 # HomeKit requires a firmware revision shaped like "x[.y[.z]]" and validates
@@ -575,11 +579,39 @@ class HomeKitSecureVideoCameraAccessory(Camera):
                 input_source=stream_source,
                 configuration=configuration,
                 source_has_audio=source_has_audio,
-                reencode=self._reencode,
+                reencode=self._reencode_recording(configuration),
                 source_level=self._source_profile.get("video_level"),
             ),
             configuration,
         )
+
+    def _reencode_recording(
+        self, configuration: HomeKitSecureVideoSelectedConfiguration
+    ) -> bool:
+        """
+        Decide whether the recording has to be re-encoded.
+
+        Turning re-encoding off is a choice about CPU, not about correctness:
+        a hub silently discards a recording that is not what it negotiated, so
+        the option is honoured only while the camera already sends exactly
+        that.
+        """
+        if self._reencode:
+            return True
+        if source_matches_configuration(self._source_profile, configuration):
+            return False
+        LOGGER.info(
+            "Re-encoding the recording of %s despite the option: the camera "
+            "sends %sx%s at %s fps and HomeKit negotiated %sx%s at %s fps",
+            self._camera_entity_id,
+            self._source_profile.get("width"),
+            self._source_profile.get("height"),
+            self._source_profile.get("frame_rate"),
+            configuration.width,
+            configuration.height,
+            configuration.frame_rate,
+        )
+        return True
 
     def _notify_status_changed(self) -> None:
         """Tell the manager that the streaming state changed."""
