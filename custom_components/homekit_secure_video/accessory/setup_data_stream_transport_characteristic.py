@@ -27,7 +27,7 @@ class HomeKitSecureVideoSetupDataStreamTransportCharacteristic(Characteristic):
         display_name: str,
         type_id: UUID,
         properties: dict[str, str | list[str]],
-        setup_callback: Callable[[str, str], str],
+        setup_callback: Callable[[str, str], tuple[str, str]],
     ) -> None:
         """Initialize the characteristic with the handler of the setup write."""
         super().__init__(display_name, type_id, properties)
@@ -36,7 +36,13 @@ class HomeKitSecureVideoSetupDataStreamTransportCharacteristic(Characteristic):
     def client_update_value(
         self, value: str, sender_client_addr: tuple[str, int] | None = None
     ) -> str:
-        """Answer a setup write with the session parameters of that controller."""
-        response = self._setup_callback(value, str(sender_client_addr))
-        self.value = response
+        """
+        Answer a setup write with the session parameters of that controller.
+
+        The value left behind for a later read omits the accessory key salt —
+        the characteristic is readable, and the salt belongs only to the answer
+        to the write that produced it.
+        """
+        response, readable_value = self._setup_callback(value, str(sender_client_addr))
+        self.value = readable_value
         return response

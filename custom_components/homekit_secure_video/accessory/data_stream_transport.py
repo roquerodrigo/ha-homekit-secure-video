@@ -63,11 +63,16 @@ class HomeKitSecureVideoDataStreamTransportService:
         """Initialize the service around a running data stream server."""
         self._data_stream_server = data_stream_server
         self._shared_key_lookup = shared_key_lookup
-        self._last_response = ""
         self.service = self._build_service()
 
-    def handle_setup_write(self, value: str, client_address: str) -> str:
-        """Prepare a session for the writing controller and answer its parameters."""
+    def handle_setup_write(self, value: str, client_address: str) -> tuple[str, str]:
+        """
+        Prepare a session for the writing controller and answer its parameters.
+
+        Returns the answer to the write and the value a later read may serve.
+        They differ by the accessory key salt, which belongs only to the
+        controller whose write produced it.
+        """
         request = tlv.decode(value, from_base64=True)
         self._verify_request(request)
 
@@ -93,16 +98,14 @@ class HomeKitSecureVideoDataStreamTransportService:
             TAG_SESSION_PARAMETERS,
             session_parameters,
         )
-        # A later read must not hand the accessory key salt to whoever asks:
-        # it is only ever part of the answer to the write that produced it.
-        self._last_response = to_base64_str(response)
         LOGGER.debug(
             "Prepared a data stream session for %s on port %s", client_address, port
         )
 
-        return to_base64_str(
+        answer = to_base64_str(
             response + tlv.encode(TAG_ACCESSORY_KEY_SALT, keys.accessory_key_salt)
         )
+        return answer, to_base64_str(response)
 
     def _verify_request(self, request: dict[bytes, bytes]) -> None:
         """Reject anything but a start request for the HomeKit Data Stream."""
