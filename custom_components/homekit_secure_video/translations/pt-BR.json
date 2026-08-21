@@ -13,7 +13,7 @@
         "data_description": {
           "camera_entity_id": "Só é possível publicar câmeras capazes de fornecer um stream.",
           "motion_entity_id": "O movimento desse sensor é informado ao HomeKit e dispara as gravações.",
-          "reencode": "Deixe ligado, a menos que a câmera já envie H.264 em nível 4.0 ou menor e resolução de 1080p ou menos — o stream secundário da câmera costuma atender. Pode ser alterado depois nas opções.",
+          "reencode": "Deixe ligado, a menos que a câmera já envie H.264 em nível 4.0 ou menor e resolução de 1080p ou menos — o stream secundário da câmera costuma atender. Pode ser alterado depois reconfigurando a entrada.",
           "always_on_motion": "Grava continuamente: o HomeKit é informado de que o movimento nunca cessa e abre uma gravação atrás da outra. Ignora o sensor de movimento acima e consome bem mais armazenamento no iCloud."
         }
       },
@@ -98,7 +98,7 @@
     },
     "oversized_source": {
       "title": "{entry}: a câmera envia uma imagem maior do que a negociada com o HomeKit",
-      "description": "`{camera}` envia {source_resolution}, maior que os {offered_resolution} oferecidos ao HomeKit, e a recodificação está desligada — nada reduz a imagem, então o HomeKit recebe algo diferente do que pediu. Aponte esta entrada para um fluxo de menor resolução da câmera, ou ligue a recodificação nas opções da integração."
+      "description": "`{camera}` envia {source_resolution}, maior que os {offered_resolution} oferecidos ao HomeKit, e a recodificação está desligada — nada reduz a imagem, então o HomeKit recebe algo diferente do que pediu. Aponte esta entrada para um fluxo de menor resolução da câmera, ou ligue a recodificação reconfigurando esta entrada."
     }
   }
 }
