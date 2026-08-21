@@ -214,6 +214,7 @@ class HomeKitSecureVideoRecordingManagementService:
             },
         )
         audio_active.value = 1
+        audio_active.setter_callback = self._handle_audio_active_write
         service.add_characteristic(audio_active)
 
         for display_name, type_id, value in (
@@ -270,6 +271,11 @@ class HomeKitSecureVideoRecordingManagementService:
         LOGGER.debug("HomeKit set recording active to %s", value)
         if not value:
             self.abort_recording()
+        self._announce_state_change()
+
+    def _handle_audio_active_write(self, value: int) -> None:
+        """Follow HomeKit turning the audio of recordings on or off."""
+        LOGGER.debug("HomeKit set the recording audio to %s", value)
         self._announce_state_change()
 
     def _handle_selected_configuration_write(self, value: str) -> None:

@@ -215,6 +215,9 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         self._recorder.set_stream_ended_callback(self._handle_recorder_stream_ended)
         self._recorder_started_at: float | None = None
         self._recorder_restart_failures = 0
+        self._recording_settings: (
+            tuple[HomeKitSecureVideoSelectedConfiguration, bool] | None
+        ) = None
         self._operating_mode = HomeKitSecureVideoCameraOperatingModeService(
             self._handle_camera_active_changed
         )
@@ -618,10 +621,15 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         )
 
         if not should_record or configuration is None:
+            self._recording_settings = None
             await self._recorder.async_stop()
             return
 
-        if self._recorder.is_running:
+        wanted = (configuration, self._recording_management.is_audio_enabled)
+        # A running recorder is left alone only while it still encodes what
+        # HomeKit is asking for: the audio toggle and the negotiated
+        # configuration are both read once, when ffmpeg is spawned.
+        if self._recorder.is_running and self._recording_settings == wanted:
             return
 
         stream_source = await camera.async_get_stream_source(
@@ -637,6 +645,7 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         source_has_audio = self._recording_management.is_audio_enabled and (
             await async_source_has_audio(self._ffmpeg_binary, stream_source)
         )
+        self._recording_settings = wanted
         self._recorder_started_at = asyncio.get_running_loop().time()
         await self._recorder.async_start(
             HomeKitSecureVideoRecordingCommand(
