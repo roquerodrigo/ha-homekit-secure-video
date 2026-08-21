@@ -173,3 +173,23 @@ async def test_last_recording_sensor_reports_when_a_clip_ended(
     assert hass.states.get("sensor.front_door_last_recording").state == (
         "2026-08-21T15:30:00+00:00"
     )
+
+
+async def test_qr_code_image_keeps_its_timestamp_across_status_changes(
+    hass, setup_integration
+):
+    entity = hass.data["image"].get_entity(_entity_id(hass, "image"))
+    stamped_at = entity.image_last_updated
+
+    for streaming in (True, False, True):
+        setup_integration.runtime_data.coordinator.async_set_updated_data(
+            {
+                "pairing_code": PAIRING_CODE,
+                "setup_uri": SETUP_URI,
+                "paired": False,
+                "streaming": streaming,
+            }
+        )
+        await hass.async_block_till_done()
+
+    assert entity.image_last_updated == stamped_at

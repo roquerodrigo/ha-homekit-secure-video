@@ -61,6 +61,7 @@ class HomeKitSecureVideoPairingQrCodeImage(HomeKitSecureVideoEntity, ImageEntity
         ImageEntity.__init__(self, hass)
         self._rendered_setup_uri: str | None = None
         self._rendered_qr_code: bytes | None = None
+        self._published_setup_uri: str = coordinator.data["setup_uri"]
         self._attr_image_last_updated = dt_util.utcnow()
 
     @property
@@ -84,7 +85,16 @@ class HomeKitSecureVideoPairingQrCodeImage(HomeKitSecureVideoEntity, ImageEntity
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Stamp a new timestamp whenever the setup payload changes."""
-        if self.coordinator.data["setup_uri"] != self._rendered_setup_uri:
+        """
+        Stamp a new timestamp whenever the setup payload changes.
+
+        Compared against the payload last seen, not the one last rendered: the
+        entity is diagnostic and usually nobody ever fetches it, and a
+        comparison against what was rendered would restamp on every unrelated
+        status change and invalidate the frontend's cached URL each time.
+        """
+        setup_uri = self.coordinator.data["setup_uri"]
+        if setup_uri != self._published_setup_uri:
+            self._published_setup_uri = setup_uri
             self._attr_image_last_updated = dt_util.utcnow()
         super()._handle_coordinator_update()
