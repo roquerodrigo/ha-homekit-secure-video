@@ -942,3 +942,25 @@ async def test_a_live_stream_that_ends_frees_its_slot(accessory):
     assert (
         accessory._streaming_status[session_info["stream_idx"]] == STREAMING_AVAILABLE
     )
+
+
+def _write_operating_mode(accessory, name, value):
+    """Write a CameraOperatingMode characteristic the way a controller would."""
+    characteristic = accessory.get_service("CameraOperatingMode").get_characteristic(
+        name
+    )
+    characteristic.broker = MagicMock()
+    characteristic.client_update_value(value)
+
+
+async def test_the_camera_mode_follows_what_homekit_selected(accessory):
+    assert accessory.homekit_camera_mode == "detect_activity"
+
+    _write_operating_mode(accessory, "EventSnapshotsActive", 0)
+    assert accessory.homekit_camera_mode == "stream"
+
+    _enable_recording(accessory)
+    assert accessory.homekit_camera_mode == "stream_and_record"
+
+    _write_camera_active(accessory, 0)
+    assert accessory.homekit_camera_mode == "off"
