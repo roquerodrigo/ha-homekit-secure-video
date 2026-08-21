@@ -261,6 +261,24 @@ async def test_probe_reports_audio_when_ffprobe_finds_it():
         assert await async_source_has_audio("/usr/bin/ffmpeg", "rtsp://camera/stream")
 
 
+@pytest.mark.parametrize(
+    ("ffmpeg_binary", "expected"),
+    [
+        ("/usr/bin/ffmpeg", "/usr/bin/ffprobe"),
+        ("/usr/lib/jellyfin-ffmpeg/ffmpeg", "/usr/lib/jellyfin-ffmpeg/ffprobe"),
+        ("ffmpeg", "ffprobe"),
+    ],
+)
+async def test_the_probe_runs_the_ffprobe_beside_the_configured_ffmpeg(
+    ffmpeg_binary, expected
+):
+    create_subprocess = AsyncMock(return_value=_probe_process())
+    with patch("asyncio.create_subprocess_exec", create_subprocess):
+        await async_probe_source(ffmpeg_binary, "rtsp://camera/stream")
+
+    assert create_subprocess.call_args.args[0] == expected
+
+
 async def test_probe_reports_no_audio_on_an_empty_answer():
     stdout = json.dumps({"streams": [{"codec_type": "video"}]}).encode()
     with patch(
