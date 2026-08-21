@@ -141,6 +141,25 @@ def test_rejects_an_out_of_range_back_reference():
         opack.decode(b"\xa5")
 
 
+def test_rejects_a_payload_nested_past_the_depth_limit():
+    deep = b"\xd1" * (opack.MAX_NESTING_DEPTH + 1) + b"\x08"
+
+    with pytest.raises(HomeKitSecureVideoOpackError, match="nested past"):
+        opack.decode(deep)
+
+
+def test_accepts_a_payload_nested_up_to_the_depth_limit():
+    depth = opack.MAX_NESTING_DEPTH
+    encoded = b"\xd1" * depth + b"\x08"
+
+    decoded = opack.decode(encoded)
+
+    for _ in range(depth):
+        assert isinstance(decoded, list)
+        decoded = decoded[0]
+    assert decoded == 0
+
+
 def test_rejects_a_non_string_dictionary_key():
     with pytest.raises(HomeKitSecureVideoOpackError, match="dictionary key"):
         opack.decode(b"\xe1\x08\x08")

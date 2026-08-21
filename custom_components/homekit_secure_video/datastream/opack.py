@@ -58,6 +58,11 @@ MAX_SMALL_INT: Final = 38
 
 _APPLE_EPOCH_OFFSET_SECONDS: Final = 978307200
 
+# Data stream messages nest a handful of levels; the ceiling only exists so a
+# payload built to nest thousands raises the codec error instead of a
+# RecursionError, which is the one failure the connection cannot catch.
+MAX_NESTING_DEPTH: Final = 32
+
 _INT8_MIN: Final = -128
 _INT8_MAX: Final = 127
 _INT16_MIN: Final = -32768
@@ -85,7 +90,7 @@ def encode(value: OpackValue) -> bytes:
 
 def decode(data: bytes) -> OpackValue:
     """Decode the OPACK representation of a single value."""
-    value, index = _decode_value(data, 0, [])
+    value, index = _decode_value(data, 0, [], 0)
     if index != len(data):
         message = f"Failed to decode OPACK: {len(data) - index} trailing bytes"
         raise HomeKitSecureVideoOpackError(message)
@@ -201,7 +206,7 @@ def _encode_dict(value: dict[str, OpackValue], parts: list[bytes]) -> None:
 
 
 def _decode_value(  # noqa: PLR0911, PLR0912 -- one branch per OPACK tag range
-    data: bytes, index: int, tracked: list[OpackValue]
+    data: bytes, index: int, tracked: list[OpackValue], depth: int
 ) -> tuple[OpackValue | _Terminator, int]:
     """
     Decode one value, returning it and the index just past it.
@@ -249,9 +254,9 @@ def _decode_value(  # noqa: PLR0911, PLR0912 -- one branch per OPACK tag range
     if TAG_POINTER_START <= tag <= TAG_POINTER_STOP:
         return _decode_pointer(tag - TAG_POINTER_START, tracked), index
     if TAG_ARRAY_START <= tag <= TAG_ARRAY_TERMINATED:
-        return _decode_array(data, index, tag, tracked)
+        return _decode_array(data, index, tag, tracked, depth + 1)
     if TAG_DICT_START <= tag <= TAG_DICT_TERMINATED:
-        return _decode_dict(data, index, tag, tracked)
+        return _decode_dict(data, index, tag, tracked, depth + 1)
 
     message = f"Failed to decode OPACK: unknown tag 0x{tag:02x} at offset {index - 1}"
     raise HomeKitSecureVideoOpackError(message)
@@ -330,19 +335,20 @@ def _decode_pointer(pointer: int, tracked: list[OpackValue]) -> OpackValue:
 
 
 def _decode_array(
-    data: bytes, index: int, tag: int, tracked: list[OpackValue]
+    data: bytes, index: int, tag: int, tracked: list[OpackValue], depth: int
 ) -> tuple[list[OpackValue], int]:
     """Decode an inline or terminated array."""
+    _guard_depth(depth)
     elements: list[OpackValue] = []
     if tag == TAG_ARRAY_TERMINATED:
         while True:
-            element, index = _decode_value(data, index, tracked)
+            element, index = _decode_value(data, index, tracked, depth)
             if isinstance(element, _Terminator):
                 return elements, index
             elements.append(element)
 
     for _ in range(tag - TAG_ARRAY_START):
-        element, index = _decode_value(data, index, tracked)
+        element, index = _decode_value(data, index, tracked, depth)
         if isinstance(element, _Terminator):
             message = "Failed to decode OPACK: terminator inside a sized array"
             raise HomeKitSecureVideoOpackError(message)
@@ -351,15 +357,16 @@ def _decode_array(
 
 
 def _decode_dict(
-    data: bytes, index: int, tag: int, tracked: list[OpackValue]
+    data: bytes, index: int, tag: int, tracked: list[OpackValue], depth: int
 ) -> tuple[dict[str, OpackValue], int]:
     """Decode an inline or terminated dictionary."""
+    _guard_depth(depth)
     entries: dict[str, OpackValue] = {}
     terminated = tag == TAG_DICT_TERMINATED
     remaining = -1 if terminated else tag - TAG_DICT_START
 
     while terminated or remaining > 0:
-        key, index = _decode_value(data, index, tracked)
+        key, index = _decode_value(data, index, tracked, depth)
         if isinstance(key, _Terminator):
             if terminated:
                 return entries, index
@@ -372,7 +379,7 @@ def _decode_dict(
             )
             raise HomeKitSecureVideoOpackError(message)
 
-        value, index = _decode_value(data, index, tracked)
+        value, index = _decode_value(data, index, tracked, depth)
         if isinstance(value, _Terminator):
             message = "Failed to decode OPACK: terminator where a value was expected"
             raise HomeKitSecureVideoOpackError(message)
@@ -380,6 +387,13 @@ def _decode_dict(
         remaining -= 1
 
     return entries, index
+
+
+def _guard_depth(depth: int) -> None:
+    """Fail before the interpreter does on a payload built to nest deeply."""
+    if depth > MAX_NESTING_DEPTH:
+        message = f"Failed to decode OPACK: nested past {MAX_NESTING_DEPTH} levels"
+        raise HomeKitSecureVideoOpackError(message)
 
 
 def _read_tag(data: bytes, index: int) -> int:
