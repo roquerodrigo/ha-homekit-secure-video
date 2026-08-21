@@ -594,6 +594,21 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         await asyncio.sleep(delay)
         await self._async_sync_recorder()
 
+    async def _async_source_has_audio(self, stream_source: str) -> bool:
+        """
+        Return whether the camera has an audio track to map.
+
+        The profile probed when the accessory was published answers this, and
+        the live stream already decides from it. Probing again would cost
+        another ffprobe — up to fifteen seconds, under the recorder lock, while
+        the hub waits — on every start, and the recorder restarts on its own.
+        A profile with no video codec is one whose probe failed, and only that
+        is worth asking again.
+        """
+        if self._source_profile.get("video_codec") is not None:
+            return self._source_profile.get("audio_codec") is not None
+        return await async_source_has_audio(self._ffmpeg_binary, stream_source)
+
     def _next_recorder_restart_delay(self) -> int:
         """Return how long to wait before starting the recorder again."""
         delay = min(
@@ -687,8 +702,9 @@ class HomeKitSecureVideoCameraAccessory(Camera):
             )
             return
 
-        source_has_audio = self._recording_management.is_audio_enabled and (
-            await async_source_has_audio(self._ffmpeg_binary, stream_source)
+        source_has_audio = (
+            self._recording_management.is_audio_enabled
+            and await self._async_source_has_audio(stream_source)
         )
         self._recording_settings = wanted
         self._recorder_started_at = asyncio.get_running_loop().time()

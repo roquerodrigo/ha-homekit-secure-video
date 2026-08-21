@@ -14,6 +14,7 @@ from custom_components.homekit_secure_video.accessory import (
 from custom_components.homekit_secure_video.recording import (
     HomeKitSecureVideoAudioSampleRate,
 )
+from custom_components.homekit_secure_video.recording.source_probe import EMPTY_PROFILE
 
 from .conftest import CAMERA_ENTITY_ID, MOTION_ENTITY_ID
 
@@ -964,3 +965,51 @@ async def test_the_camera_mode_follows_what_homekit_selected(accessory):
 
     _write_camera_active(accessory, 0)
     assert accessory.homekit_camera_mode == "off"
+
+
+async def test_the_recorder_reuses_the_probed_audio_track(hass, accessory):
+    recorder = _mock_recorder(accessory)
+    accessory._source_profile = {
+        "video_codec": "h264",
+        "video_level": 41,
+        "width": 1920,
+        "height": 1080,
+        "frame_rate": 20.0,
+        "audio_codec": "aac",
+        "audio_sample_rate": 16000,
+    }
+
+    with (
+        patch(
+            f"{MODULE}.camera.async_get_stream_source",
+            AsyncMock(return_value="rtsp://camera"),
+        ),
+        patch(f"{MODULE}.async_source_has_audio", AsyncMock()) as probe,
+    ):
+        _enable_recording(accessory)
+        await hass.async_block_till_done()
+
+    probe.assert_not_awaited()
+    assert recorder.async_start.await_args.args[0].source_has_audio is True
+
+
+async def test_the_recorder_probes_again_when_the_camera_was_unreachable(
+    hass, accessory
+):
+    recorder = _mock_recorder(accessory)
+    accessory._source_profile = dict(EMPTY_PROFILE)
+
+    with (
+        patch(
+            f"{MODULE}.camera.async_get_stream_source",
+            AsyncMock(return_value="rtsp://camera"),
+        ),
+        patch(
+            f"{MODULE}.async_source_has_audio", AsyncMock(return_value=True)
+        ) as probe,
+    ):
+        _enable_recording(accessory)
+        await hass.async_block_till_done()
+
+    probe.assert_awaited()
+    assert recorder.async_start.await_args.args[0].source_has_audio is True
