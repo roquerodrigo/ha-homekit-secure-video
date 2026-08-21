@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import re
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
 from homeassistant.components import camera
@@ -58,7 +59,7 @@ from .data_stream_transport import HomeKitSecureVideoDataStreamTransportService
 from .recording_management import HomeKitSecureVideoRecordingManagementService
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Coroutine
     from datetime import datetime
 
     from homeassistant.core import Event, EventStateChangedData, HomeAssistant
@@ -182,6 +183,8 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         # all pass the "already running" check before the first ffmpeg exists
         # and every one of them spawns its own, orphaning the rest.
         self._recorder_lock = asyncio.Lock()
+        self._recorder_tasks: set[asyncio.Task[None]] = set()
+        self._stopped = False
         self._unsubscribe_motion: Callable[[], None] | None = None
 
         super().__init__(
@@ -292,6 +295,8 @@ class HomeKitSecureVideoCameraAccessory(Camera):
 
     async def stop(self) -> None:
         """Stop motion tracking and every running stream."""
+        self._stopped = True
+        await self._async_cancel_recorder_tasks()
         if self._unsubscribe_motion is not None:
             self._unsubscribe_motion()
             self._unsubscribe_motion = None
@@ -561,7 +566,7 @@ class HomeKitSecureVideoCameraAccessory(Camera):
             loop.time() - started_at >= HEALTHY_RECORDER_RUN_SECONDS
         ):
             self._recorder_restart_failures = 0
-        self._hass.async_create_task(self._async_restart_recorder())
+        self._track_recorder_task(self._async_restart_recorder())
 
     async def _async_restart_recorder(self) -> None:
         """
@@ -587,7 +592,7 @@ class HomeKitSecureVideoCameraAccessory(Camera):
 
     def _handle_recording_state_changed(self) -> None:
         """Start or stop the recorder to match what HomeKit asked for."""
-        self._hass.async_create_task(self._async_sync_recorder())
+        self._track_recorder_task(self._async_sync_recorder())
         self._notify_status_changed()
 
     def _handle_camera_active_changed(self) -> None:
@@ -595,7 +600,7 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         if not self._operating_mode.is_camera_active:
             self._recording_management.abort_recording()
         self._async_update_motion_sensor_active()
-        self._hass.async_create_task(self._async_sync_recorder())
+        self._track_recorder_task(self._async_sync_recorder())
         self._notify_status_changed()
 
     def _async_update_motion_sensor_active(self) -> None:
@@ -606,9 +611,36 @@ class HomeKitSecureVideoCameraAccessory(Camera):
             self._operating_mode.is_camera_active
         )
 
+    def _track_recorder_task(self, coroutine: Coroutine[Any, Any, None]) -> None:
+        """
+        Run recorder work on a task this accessory can cancel.
+
+        Resolving the stream source and probing its audio both take seconds,
+        and a task suspended there would otherwise resume after the accessory
+        was stopped and spawn an ffmpeg nothing owns any more.
+        """
+        if self._stopped:
+            coroutine.close()
+            return
+        task = self._hass.async_create_task(coroutine)
+        self._recorder_tasks.add(task)
+        task.add_done_callback(self._recorder_tasks.discard)
+
+    async def _async_cancel_recorder_tasks(self) -> None:
+        """Cancel every pending piece of recorder work and wait for it."""
+        tasks = tuple(self._recorder_tasks)
+        self._recorder_tasks.clear()
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
     async def _async_sync_recorder(self) -> None:
         """Run the recorder exactly while HomeKit wants recordings."""
         async with self._recorder_lock:
+            if self._stopped:
+                return
             await self._async_sync_recorder_once()
 
     async def _async_sync_recorder_once(self) -> None:
