@@ -110,6 +110,38 @@ async def test_supported_resolutions_honour_the_options(
     assert all(width <= 640 and height <= 480 for width, height, _ in resolutions)
 
 
+async def test_a_frame_rate_cap_limits_resolutions_instead_of_dropping_them(
+    hass, hap_driver, config_entry, camera_state, data_stream_server
+):
+    hass.config_entries.async_update_entry(
+        config_entry, options={"max_width": 1920, "max_height": 1080, "max_fps": 20}
+    )
+    accessory = _build_accessory(hass, hap_driver, config_entry, data_stream_server)
+
+    resolutions = accessory._build_options(config_entry.options, "127.0.0.1")["video"][
+        "resolutions"
+    ]
+
+    assert len(resolutions) > 1
+    assert all(fps <= 20 for _, _, fps in resolutions)
+
+
+async def test_a_cap_below_every_resolution_still_advertises_one(
+    hass, hap_driver, config_entry, camera_state, data_stream_server
+):
+    hass.config_entries.async_update_entry(
+        config_entry, options={"max_width": 160, "max_height": 120, "max_fps": 10}
+    )
+    accessory = _build_accessory(hass, hap_driver, config_entry, data_stream_server)
+
+    resolutions = accessory._build_options(config_entry.options, "127.0.0.1")["video"][
+        "resolutions"
+    ]
+
+    assert resolutions
+    assert all(fps <= 10 for _, _, fps in resolutions)
+
+
 async def test_start_stream_spawns_ffmpeg(accessory):
     session = MagicMock()
     session.async_start = AsyncMock(return_value=True)

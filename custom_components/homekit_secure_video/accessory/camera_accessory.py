@@ -370,10 +370,16 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         max_width = int(options.get("max_width", DEFAULT_MAX_WIDTH))
         max_height = int(options.get("max_height", DEFAULT_MAX_HEIGHT))
         max_fps = int(options.get("max_fps", DEFAULT_MAX_FPS))
+        # The cap limits the frame rate of each resolution rather than
+        # dropping the ones that exceed it: every entry but the Apple Watch one
+        # is 30 fps, so filtering on it leaves HomeKit a camera that advertises
+        # a thumbnail, or nothing at all.
         resolutions = [
-            [width, height, fps]
+            [width, height, min(fps, max_fps)]
             for width, height, fps in SUPPORTED_RESOLUTIONS
-            if width <= max_width and height <= max_height and fps <= max_fps
+            if width <= max_width and height <= max_height
+        ] or [
+            [*SUPPORTED_RESOLUTIONS[0][:2], min(SUPPORTED_RESOLUTIONS[0][2], max_fps)]
         ]
         return {
             "video": {
