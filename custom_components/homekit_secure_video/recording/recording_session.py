@@ -28,8 +28,14 @@ if TYPE_CHECKING:
     from ..datastream import HomeKitSecureVideoDataStreamConnection
     from .recorder import HomeKitSecureVideoRecorder
 
-FRAGMENT_WAIT_SECONDS = 10
-INITIALIZATION_WAIT_SECONDS = 5
+# Both waits are sized for a camera whose recorder is slower than real
+# time — an over-sized source re-encoded on a loaded host. Measured against
+# one such camera, ffmpeg took 7s to emit its ftyp+moov and another 11s to
+# emit the first fragment, against 4s and 4s for a camera comfortably inside
+# its budget. Sized too tightly, the first ends the session before it has
+# anything to send and the second truncates the clip seconds after it opens.
+FRAGMENT_WAIT_SECONDS = 15
+INITIALIZATION_WAIT_SECONDS = 15
 INITIALIZATION_POLL_SECONDS = 0.25
 
 
