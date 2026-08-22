@@ -507,3 +507,35 @@ async def test_a_subscriber_that_falls_behind_drops_fragments(recorder, caplog):
     assert "subscriber is behind" in caplog.text
     recorder.unsubscribe(queue)
     await recorder.async_stop()
+
+
+async def test_a_recorder_stops_even_when_ffmpeg_never_reports_its_exit(recorder):
+    """A lost exit notification must not hold the recorder — or its lock — open."""
+    from custom_components.homekit_secure_video.recording import recorder as module
+
+    stream = _box(b"ftyp") + _box(b"moov")
+    command = HomeKitSecureVideoRecordingCommand(
+        input_source="rtsp://camera",
+        configuration=CONFIGURATION,
+        source_has_audio=False,
+    )
+    process = _process(stream)
+    process.wait = AsyncMock(side_effect=_never)
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=process)):
+        await recorder.async_start(command, CONFIGURATION)
+        await asyncio.sleep(0)
+
+    with (
+        patch.object(module, "TERMINATE_TIMEOUT_SECONDS", 0),
+        patch.object(module, "KILL_TIMEOUT_SECONDS", 0),
+    ):
+        await asyncio.wait_for(recorder.async_stop(), 5)
+
+    assert process.kill.call_count == 1
+    assert not recorder.is_running
+
+
+async def _never() -> None:
+    """Stand in for a process whose exit is never reported."""
+    await asyncio.Event().wait()

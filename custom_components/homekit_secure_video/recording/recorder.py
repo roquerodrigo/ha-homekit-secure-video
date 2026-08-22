@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from .selected_configuration import HomeKitSecureVideoSelectedConfiguration
 
 TERMINATE_TIMEOUT_SECONDS = 5
+KILL_TIMEOUT_SECONDS = 5
 SUBSCRIBER_QUEUE_SIZE = 16
 
 
@@ -122,7 +123,19 @@ class HomeKitSecureVideoRecorder:
             except TimeoutError:
                 with contextlib.suppress(ProcessLookupError):
                     process.kill()
-                await process.wait()
+                # A process that never reports its exit — a lost notification
+                # is enough — would hold this coroutine, and with it the lock
+                # the accessory synchronises the recorder under, for good: the
+                # camera then stops recording until the entry is reloaded,
+                # with nothing above DEBUG in the log to say why.
+                try:
+                    async with asyncio.timeout(KILL_TIMEOUT_SECONDS):
+                        await process.wait()
+                except TimeoutError:
+                    LOGGER.warning(
+                        "Gave up waiting for ffmpeg %s to exit after killing it",
+                        process.pid,
+                    )
 
         if self._prebuffer is not None:
             self._prebuffer.clear()
