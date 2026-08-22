@@ -48,8 +48,9 @@ def test_a_camera_below_the_cap_is_never_offered_more_than_it_sends():
 
 
 def test_a_camera_below_every_entry_is_offered_the_smallest_one_alone():
-    """HomeKit only negotiates a frame size it knows, so the upscale is
-    unavoidable — but offering just the smallest entry keeps it minimal."""
+    """HomeKit only negotiates a frame size and shape it knows, so the upscale
+    and the pillarboxing are unavoidable — but offering just the smallest entry
+    keeps the upscale minimal."""
     assert limited_resolutions(CATALOGUE, _source(896, 512), 1920, 1080, 15) == (
         (1280, 720, 15),
     )
@@ -70,3 +71,12 @@ def test_an_unprobed_camera_falls_back_to_the_catalogue():
 
 def test_an_unprobed_camera_under_every_entry_still_gets_an_offer():
     assert limited_resolutions(CATALOGUE, UNKNOWN, 640, 480, 30) == ((1280, 720, 30),)
+
+
+def test_the_floor_is_what_a_slower_camera_gets_raised_to():
+    """A hub stops choosing below a floor, so a 10 fps camera is raised."""
+    from custom_components.homekit_secure_video.accessory.camera_accessory import (
+        MIN_ADVERTISED_FPS,
+    )
+
+    assert limited_frame_rate({"frame_rate": 10.0}, 30) < MIN_ADVERTISED_FPS

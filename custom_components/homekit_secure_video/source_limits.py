@@ -50,14 +50,11 @@ def limited_resolutions(
     """
     width = source_profile.get("width")
     height = source_profile.get("height")
-    if width is None or height is None:
-        return _within(catalogue, max_width, max_height, frame_rate) or (
-            _smallest(catalogue, frame_rate),
-        )
+    if width is not None and height is not None:
+        max_width = min(max_width, width)
+        max_height = min(max_height, height)
 
-    ceiling_width = min(max_width, width)
-    ceiling_height = min(max_height, height)
-    return _within(catalogue, ceiling_width, ceiling_height, frame_rate) or (
+    return _within(catalogue, max_width, max_height, frame_rate) or (
         _smallest(catalogue, frame_rate),
     )
 

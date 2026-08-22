@@ -104,7 +104,12 @@ STREAM_ACTIVE = "Active"
 STREAM_ACTIVE_UUID = UUID("000000B0-0000-1000-8000-0026BB765291")
 
 MAX_HOMEKIT_H264_LEVEL = 40
-MIN_ADVERTISED_FPS = 1
+# A hub simply stops choosing when the offer is slower than this: a camera
+# advertising its own 10 fps left SelectedCameraRecordingConfiguration
+# unwritten and recorded nothing, and the same camera advertising 15 fps
+# recorded normally. Below the floor the frame rate has to be raised, which
+# is the one place duplicated frames are unavoidable.
+MIN_ADVERTISED_FPS = 15
 
 RECORDER_RESTART_DELAY_SECONDS = 5
 MAX_RECORDER_RESTART_DELAY_SECONDS = 300
