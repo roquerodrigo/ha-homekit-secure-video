@@ -186,11 +186,14 @@ class HomeKitSecureVideoRecordingSession:
         queue = self._recorder.subscribe()
         try:
             self._send_segment(initialization, is_initialization=True, is_last=False)
-            for fragment in self._recorder.prebuffered_fragments:
-                self._send_segment(fragment, is_initialization=False, is_last=False)
-            await self._async_send_live_fragments(queue)
+            ended = await self._async_send_fragments(queue)
         finally:
             self._recorder.unsubscribe(queue)
+
+        if not ended and not self.is_closed:
+            LOGGER.warning("Recording %s had no fragment to end on", self._stream_id)
+            self.close(HomeKitSecureVideoDataStreamCloseReason.UNEXPECTED_FAILURE)
+            return
 
         await self._async_await_close()
 
@@ -244,36 +247,49 @@ class HomeKitSecureVideoRecordingSession:
                 return None
             await asyncio.sleep(INITIALIZATION_POLL_SECONDS)
 
-    async def _async_send_live_fragments(self, queue: asyncio.Queue[bytes]) -> None:
-        """Send fragments as they are produced until the recording should end."""
+    async def _async_send_fragments(self, queue: asyncio.Queue[bytes]) -> bool:
+        """
+        Send the prebuffer and then live fragments, and report whether any went.
+
+        One fragment is always held back. The hub keeps the recording open
+        until a fragment says it is the last one, and it rejects the whole clip
+        when that marker arrives on a fragment carrying no footage — so the
+        recording can only be ended on a fragment that is already in hand, not
+        at the moment the next one fails to arrive.
+        """
         deadline = asyncio.get_running_loop().time() + MAX_RECORDING_SECONDS
+        held: bytes | None = None
 
-        while True:
-            if self.is_closed:
-                return
+        for fragment in self._recorder.prebuffered_fragments:
+            if held is not None:
+                self._send_segment(held, is_initialization=False, is_last=False)
+            held = fragment
 
+        while not self.is_closed:
             remaining = deadline - asyncio.get_running_loop().time()
             if remaining <= 0:
                 LOGGER.debug("Recording %s hit its time limit", self._stream_id)
-                self._send_end_of_stream()
-                return
+                break
 
             try:
                 async with asyncio.timeout(min(FRAGMENT_WAIT_SECONDS, remaining)):
                     fragment = await queue.get()
             except TimeoutError:
                 LOGGER.debug("Recording %s ran out of fragments", self._stream_id)
-                self._send_end_of_stream()
-                return
+                break
 
-            is_last = self._stop.is_set()
-            self._send_segment(fragment, is_initialization=False, is_last=is_last)
-            if is_last:
-                return
+            if held is not None:
+                self._send_segment(held, is_initialization=False, is_last=False)
+            if self._stop.is_set():
+                self._send_segment(fragment, is_initialization=False, is_last=True)
+                return True
+            held = fragment
 
-    def _send_end_of_stream(self) -> None:
-        """Mark the recording as finished without another fragment to send."""
-        self._send_segment(b"", is_initialization=False, is_last=True)
+        if held is None or self.is_closed:
+            return False
+
+        self._send_segment(held, is_initialization=False, is_last=True)
+        return True
 
     def _send_segment(
         self, payload: bytes, *, is_initialization: bool, is_last: bool

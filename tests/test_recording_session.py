@@ -100,16 +100,22 @@ async def test_the_initialization_segment_goes_out_first(session, connection):
     assert first["packets"][0]["data"] == b"init"
 
 
-async def test_the_prebuffer_is_sent_before_live_fragments(session, connection):
+async def test_the_prebuffer_is_sent_before_live_fragments(
+    session, connection, recorder
+):
     session.start()
+    await _settle()
+    await recorder.queue.put(b"live")
     await _settle()
 
     payloads = [event["packets"][0]["data"] for event in _data_events(connection)]
     assert payloads[:3] == [b"init", b"one", b"two"]
 
 
-async def test_fragments_are_numbered_in_order(session, connection):
+async def test_fragments_are_numbered_in_order(session, connection, recorder):
     session.start()
+    await _settle()
+    await recorder.queue.put(b"live")
     await _settle()
 
     numbers = [
@@ -123,9 +129,26 @@ async def test_a_live_fragment_is_forwarded(session, connection, recorder):
     session.start()
     await _settle()
     await recorder.queue.put(b"live")
+    await recorder.queue.put(b"later")
     await _settle()
 
     assert _data_events(connection)[-1]["packets"][0]["data"] == b"live"
+
+
+async def test_one_fragment_is_held_back_to_carry_the_end_of_the_clip(
+    session, connection, recorder
+):
+    session.start()
+    await _settle()
+
+    payloads = [event["packets"][0]["data"] for event in _data_events(connection)]
+    assert payloads == [b"init", b"one"]
+
+    await recorder.queue.put(b"live")
+    await _settle()
+
+    payloads = [event["packets"][0]["data"] for event in _data_events(connection)]
+    assert payloads == [b"init", b"one", b"two"]
 
 
 async def test_the_end_of_the_trigger_ends_the_recording(session, connection, recorder):
@@ -143,7 +166,7 @@ async def test_the_end_of_the_trigger_ends_the_recording(session, connection, re
 async def test_a_large_fragment_is_split_into_chunks(
     connection, recorder, make_session
 ):
-    recorder.prebuffered_fragments = (b"x" * (MAX_CHUNK_SIZE + 10),)
+    recorder.prebuffered_fragments = (b"x" * (MAX_CHUNK_SIZE + 10), b"tail")
     session = make_session(recorder)
     session.start()
     await _settle()
@@ -239,7 +262,7 @@ async def test_the_session_counts_what_it_delivered(session, connection):
 
     statistics = session.statistics
     assert statistics["fragments_sent"] == len(_data_events(connection))
-    assert statistics["bytes_sent"] == len(b"init") + len(b"one") + len(b"two")
+    assert statistics["bytes_sent"] == len(b"init") + len(b"one")
 
 
 def test_a_close_reason_is_named_in_the_log():
@@ -326,3 +349,60 @@ async def test_stopping_the_session_unwinds_its_delivery(session, recorder):
     assert session.is_closed
     assert session.closed_calls == [True]
     assert recorder.unsubscribed
+
+
+async def test_a_clip_that_runs_out_of_fragments_ends_on_the_last_real_one(
+    session, connection, recorder
+):
+    from custom_components.homekit_secure_video.recording import recording_session
+
+    with patch.object(recording_session, "FRAGMENT_WAIT_SECONDS", 0):
+        session.start()
+        await _settle()
+
+    last = _data_events(connection)[-1]
+    assert last["endOfStream"] is True
+    assert last["packets"][0]["data"] == b"two"
+    assert last["packets"][0]["metadata"]["dataTotalSize"] == len(b"two")
+
+
+async def test_a_clip_that_hits_its_time_limit_ends_on_the_last_real_one(
+    session, connection, recorder
+):
+    from custom_components.homekit_secure_video.recording import recording_session
+
+    with patch.object(recording_session, "MAX_RECORDING_SECONDS", 0):
+        session.start()
+        await _settle()
+
+    last = _data_events(connection)[-1]
+    assert last["endOfStream"] is True
+    assert last["packets"][0]["data"] == b"two"
+
+
+async def test_no_fragment_ever_carries_an_end_of_stream_without_footage(
+    session, connection, recorder
+):
+    from custom_components.homekit_secure_video.recording import recording_session
+
+    with patch.object(recording_session, "FRAGMENT_WAIT_SECONDS", 0):
+        session.start()
+        await _settle()
+
+    for event in _data_events(connection):
+        assert event["packets"][0]["data"] != b""
+
+
+async def test_a_recording_with_nothing_to_send_is_closed(connection, make_session):
+    from custom_components.homekit_secure_video.recording import recording_session
+
+    session = make_session(FakeRecorder(prebuffered=()))
+    with patch.object(recording_session, "FRAGMENT_WAIT_SECONDS", 0):
+        session.start()
+        await _settle()
+
+    assert session.is_closed
+    close_event = next(args for args in _events(connection) if args[1] == "close")
+    assert close_event[2]["reason"] == int(
+        HomeKitSecureVideoDataStreamCloseReason.UNEXPECTED_FAILURE
+    )
