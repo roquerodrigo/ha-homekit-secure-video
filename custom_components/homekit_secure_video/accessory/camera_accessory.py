@@ -50,6 +50,7 @@ from ..recording.constants import (
     HomeKitSecureVideoAudioSampleRate,
 )
 from ..recording.source_probe import EMPTY_PROFILE
+from ..source_limits import limited_frame_rate, limited_resolutions
 from ..streaming import (
     HomeKitSecureVideoLiveStreamCommand,
     HomeKitSecureVideoLiveStreamSession,
@@ -405,12 +406,16 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         # dropping the ones that exceed it: every entry but the Apple Watch one
         # is 30 fps, so filtering on it leaves HomeKit a camera that advertises
         # a thumbnail, or nothing at all.
+        frame_rate = limited_frame_rate(self._source_profile, max_fps)
         resolutions = [
-            [width, height, min(fps, max_fps)]
-            for width, height, fps in SUPPORTED_RESOLUTIONS
-            if width <= max_width and height <= max_height
-        ] or [
-            [*SUPPORTED_RESOLUTIONS[0][:2], min(SUPPORTED_RESOLUTIONS[0][2], max_fps)]
+            [width, height, min(fps, frame_rate)]
+            for width, height, fps in limited_resolutions(
+                SUPPORTED_RESOLUTIONS,
+                self._source_profile,
+                max_width,
+                max_height,
+                frame_rate,
+            )
         ]
         return {
             "video": {
@@ -482,12 +487,16 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         max_width = int(options.get("max_width", DEFAULT_MAX_WIDTH))
         max_height = int(options.get("max_height", DEFAULT_MAX_HEIGHT))
         max_fps = int(options.get("max_fps", DEFAULT_MAX_FPS))
-        frame_rate = self._advertised_frame_rate(max_fps)
-        resolutions = tuple(
-            (width, height, frame_rate)
-            for width, height, _ in RECORDING_RESOLUTIONS
-            if width <= max_width and height <= max_height
-        ) or ((RECORDING_RESOLUTIONS[0][0], RECORDING_RESOLUTIONS[0][1], frame_rate),)
+        frame_rate = self._advertised_frame_rate(
+            limited_frame_rate(self._source_profile, max_fps)
+        )
+        resolutions = limited_resolutions(
+            RECORDING_RESOLUTIONS,
+            self._source_profile,
+            max_width,
+            max_height,
+            frame_rate,
+        )
         return HomeKitSecureVideoSupportedConfiguration(
             prebuffer_milliseconds=DEFAULT_PREBUFFER_MILLISECONDS,
             fragment_milliseconds=DEFAULT_FRAGMENT_MILLISECONDS,
@@ -506,12 +515,23 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         """
         Return the frame rate to advertise to HomeKit.
 
-        This is deliberately *not* the camera's own rate. HomeKit expects the
-        30 fps that Secure Video cameras advertise, and re-encoding can produce
-        it from a slower source — advertising the camera's 20 fps instead is
-        the one thing that set this accessory apart from a working one.
+        The camera's own rate is the ceiling. Re-encoding can raise a slower
+        source to the 30 fps Secure Video cameras usually advertise, but only
+        by duplicating frames: an encode per invented frame, carrying no
+        picture that was not already there. One camera cost a whole core doing
+        exactly that.
+
+        An earlier round of this concluded the opposite — that advertising a
+        camera's own 20 fps was what set this accessory apart from a working
+        one. That was measured while every recording was being discarded for
+        an unrelated reason, and a camera advertising 15 fps has since
+        recorded normally against a real hub, so the rate is treated as a
+        ceiling like the other two caps.
         """
-        return max(MIN_ADVERTISED_FPS, min(ADVERTISED_FPS, max_fps))
+        return max(
+            MIN_ADVERTISED_FPS,
+            min(ADVERTISED_FPS, limited_frame_rate(self._source_profile, max_fps)),
+        )
 
     def _warn_about_unusable_source(self) -> None:
         """Log the ways the camera's own stream cannot be handed to HomeKit."""

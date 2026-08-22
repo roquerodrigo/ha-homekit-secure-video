@@ -435,9 +435,10 @@ async def test_the_streaming_audio_offer_is_opus_only(accessory):
     )
 
 
-async def test_the_offer_advertises_thirty_fps_whatever_the_camera_sends(
+async def test_the_offer_never_advertises_more_fps_than_the_camera_sends(
     hass, hap_driver, config_entry, camera_state, data_stream_server
 ):
+    """The cap is a ceiling: asking ffmpeg for more only duplicates frames."""
     from pyhap import tlv
 
     with patch(f"{MODULE}.get_ffmpeg_manager") as ffmpeg_manager:
@@ -459,8 +460,8 @@ async def test_the_offer_advertises_thirty_fps_whatever_the_camera_sends(
     )
     attributes = tlv.decode(video[b"\x01"])[b"\x03"]
     # Each 11-byte attribute block ends with the frame rate.
-    assert attributes[10] == 30
-    assert attributes[21] == 30
+    assert attributes[10] == 20
+    assert attributes[21] == 20
 
 
 async def test_the_offer_falls_back_when_the_camera_is_unknown(accessory):
