@@ -1013,3 +1013,28 @@ async def test_the_recorder_probes_again_when_the_camera_was_unreachable(
 
     probe.assert_awaited()
     assert recorder.async_start.await_args.args[0].source_has_audio is True
+
+
+async def test_a_storm_of_state_changes_queues_one_synchronisation(accessory):
+    """A hub retrying a recording rewrites the configuration thousands of times."""
+    with patch.object(accessory, "_async_sync_recorder", AsyncMock()):
+        for _ in range(1000):
+            accessory._handle_recording_state_changed()
+
+        assert len(accessory._recorder_tasks) == 1
+
+        await asyncio.gather(*tuple(accessory._recorder_tasks))
+
+
+async def test_a_synchronisation_can_be_asked_for_again_once_it_ran(accessory):
+    accessory._recorder = MagicMock()
+    accessory._recorder.is_running = False
+    accessory._recorder.async_stop = AsyncMock()
+
+    accessory._handle_recording_state_changed()
+    await asyncio.gather(*tuple(accessory._recorder_tasks))
+    assert accessory._recorder.async_stop.await_count == 1
+
+    accessory._handle_recording_state_changed()
+    await asyncio.gather(*tuple(accessory._recorder_tasks))
+    assert accessory._recorder.async_stop.await_count == 2

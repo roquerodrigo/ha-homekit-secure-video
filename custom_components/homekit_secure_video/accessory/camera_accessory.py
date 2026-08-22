@@ -183,6 +183,7 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         # all pass the "already running" check before the first ffmpeg exists
         # and every one of them spawns its own, orphaning the rest.
         self._recorder_lock = asyncio.Lock()
+        self._recorder_sync_pending = False
         self._recorder_tasks: set[asyncio.Task[None]] = set()
         self._stopped = False
         self._unsubscribe_motion: Callable[[], None] | None = None
@@ -620,7 +621,7 @@ class HomeKitSecureVideoCameraAccessory(Camera):
 
     def _handle_recording_state_changed(self) -> None:
         """Start or stop the recorder to match what HomeKit asked for."""
-        self._track_recorder_task(self._async_sync_recorder())
+        self._request_recorder_sync()
         self._notify_status_changed()
 
     def _handle_camera_active_changed(self) -> None:
@@ -628,7 +629,7 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         if not self._operating_mode.is_camera_active:
             self._recording_management.abort_recording()
         self._async_update_motion_sensor_active()
-        self._track_recorder_task(self._async_sync_recorder())
+        self._request_recorder_sync()
         self._notify_status_changed()
 
     def _async_update_motion_sensor_active(self) -> None:
@@ -638,6 +639,19 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         self._motion_service.get_characteristic("StatusActive").set_value(
             self._operating_mode.is_camera_active
         )
+
+    def _request_recorder_sync(self) -> None:
+        """
+        Ask for one synchronisation, however many events ask for it at once.
+
+        A hub retrying a recording rewrites the negotiated configuration
+        thousands of times a minute, and one task per write piled up behind
+        the recorder lock until the process ran out of memory.
+        """
+        if self._recorder_sync_pending:
+            return
+        self._recorder_sync_pending = True
+        self._track_recorder_task(self._async_sync_recorder())
 
     def _track_recorder_task(self, coroutine: Coroutine[Any, Any, None]) -> None:
         """
@@ -667,6 +681,7 @@ class HomeKitSecureVideoCameraAccessory(Camera):
     async def _async_sync_recorder(self) -> None:
         """Run the recorder exactly while HomeKit wants recordings."""
         async with self._recorder_lock:
+            self._recorder_sync_pending = False
             if self._stopped:
                 return
             await self._async_sync_recorder_once()
