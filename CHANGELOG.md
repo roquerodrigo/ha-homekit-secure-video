@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.1](https://github.com/roquerodrigo/ha-homekit-secure-video/compare/v0.1.0...v0.1.1) (2026-08-24)
+
+
+### Features
+
+* **hacs:** ship the install zip with every release ([dba9ecd](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/dba9ecdaeed18c9365eb4b9bc07a3a3f0c856008))
+
+
+### Development Dependencies
+
+* **deps-dev:** bump ruff in the python-deps group ([ae7c1d3](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/ae7c1d3304fa2730e38fe6100016c939d6ec87ea))
+
 ## 0.1.0 (2026-08-22)
 
 

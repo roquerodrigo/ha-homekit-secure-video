@@ -19,5 +19,5 @@
     "HAP-python[QRCode]==5.0.0",
     "pypng==0.20220715.0"
   ],
-  "version": "0.1.0"
+  "version": "0.1.1"
 }
