@@ -1,5 +1,7 @@
 {
     "name": "HomeKit Secure Video",
+    "zip_release": true,
+    "filename": "homekit_secure_video.zip",
     "homeassistant": "2026.8.2",
     "hacs": "2.0.5"
 }
