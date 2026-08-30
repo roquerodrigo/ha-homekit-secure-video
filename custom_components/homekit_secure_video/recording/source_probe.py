@@ -87,12 +87,6 @@ async def async_probe_source(
     return _parse(stdout)
 
 
-async def async_source_has_audio(ffmpeg_binary: str, input_source: str) -> bool:
-    """Return whether the stream carries an audio track."""
-    profile = await async_probe_source(ffmpeg_binary, input_source)
-    return profile["audio_codec"] is not None
-
-
 def _parse(stdout: bytes) -> HomeKitSecureVideoSourceProfile:
     """Turn ffprobe's JSON into the fields worth reporting."""
     profile: HomeKitSecureVideoSourceProfile = dict(EMPTY_PROFILE)  # type: ignore[assignment]

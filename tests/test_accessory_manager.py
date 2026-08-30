@@ -208,3 +208,28 @@ async def test_a_data_stream_server_that_will_not_start_releases_the_driver(
         await manager.async_start()
 
     stop_server.assert_awaited_once()
+
+
+async def test_a_recorder_that_keeps_failing_becomes_a_repair_issue(
+    hass, setup_integration, mock_camera_accessory
+):
+    from homeassistant.helpers import issue_registry
+
+    from custom_components.homekit_secure_video.const import DOMAIN
+    from custom_components.homekit_secure_video.issues import (
+        ISSUE_RECORDER_UNAVAILABLE,
+    )
+
+    report_health = mock_camera_accessory.set_recorder_health_callback.call_args.args[0]
+    issue_id = f"{setup_integration.entry_id}_{ISSUE_RECORDER_UNAVAILABLE}"
+    registry = issue_registry.async_get(hass)
+
+    mock_camera_accessory.is_recorder_unhealthy = True
+    report_health()
+
+    assert registry.async_get_issue(DOMAIN, issue_id) is not None
+
+    mock_camera_accessory.is_recorder_unhealthy = False
+    report_health()
+
+    assert registry.async_get_issue(DOMAIN, issue_id) is None

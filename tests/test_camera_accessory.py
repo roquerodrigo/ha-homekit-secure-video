@@ -30,6 +30,15 @@ EMPTY_SOURCE = {
     "audio_codec": None,
     "audio_sample_rate": None,
 }
+_PROBED_WITH_AUDIO = {
+    **EMPTY_SOURCE,
+    "video_codec": "h264",
+    "width": 1920,
+    "height": 1080,
+    "frame_rate": 30,
+    "audio_codec": "aac",
+    "audio_sample_rate": 16000,
+}
 STREAM_REQUEST = {
     "address": "192.168.1.10",
     "v_port": 50000,
@@ -744,7 +753,9 @@ async def test_a_burst_of_writes_starts_one_recorder(hass, accessory):
             f"{MODULE}.camera.async_get_stream_source",
             AsyncMock(return_value="rtsp://camera"),
         ),
-        patch(f"{MODULE}.async_source_has_audio", AsyncMock(return_value=False)),
+        patch(
+            f"{MODULE}.async_probe_source", AsyncMock(return_value=dict(EMPTY_PROFILE))
+        ),
     ):
         await asyncio.gather(*(accessory._async_sync_recorder() for _ in range(8)))
 
@@ -841,7 +852,9 @@ async def test_turning_recording_audio_off_restarts_the_recorder(hass, accessory
             f"{MODULE}.camera.async_get_stream_source",
             AsyncMock(return_value="rtsp://camera"),
         ),
-        patch(f"{MODULE}.async_source_has_audio", AsyncMock(return_value=True)),
+        patch(
+            f"{MODULE}.async_probe_source", AsyncMock(return_value=_PROBED_WITH_AUDIO)
+        ),
     ):
         _enable_recording(accessory)
         await hass.async_block_till_done()
@@ -864,7 +877,9 @@ async def test_an_unchanged_setting_leaves_the_recorder_alone(hass, accessory):
             f"{MODULE}.camera.async_get_stream_source",
             AsyncMock(return_value="rtsp://camera"),
         ),
-        patch(f"{MODULE}.async_source_has_audio", AsyncMock(return_value=True)),
+        patch(
+            f"{MODULE}.async_probe_source", AsyncMock(return_value=_PROBED_WITH_AUDIO)
+        ),
     ):
         _enable_recording(accessory)
         await hass.async_block_till_done()
@@ -889,7 +904,9 @@ async def test_stop_cancels_a_pending_recorder_sync(hass, accessory):
 
     with (
         patch(f"{MODULE}.camera.async_get_stream_source", stream_source),
-        patch(f"{MODULE}.async_source_has_audio", AsyncMock(return_value=False)),
+        patch(
+            f"{MODULE}.async_probe_source", AsyncMock(return_value=dict(EMPTY_PROFILE))
+        ),
     ):
         _enable_recording(accessory)
         async with asyncio.timeout(5):
@@ -913,7 +930,9 @@ async def test_a_stopped_accessory_starts_no_recorder(hass, accessory):
             f"{MODULE}.camera.async_get_stream_source",
             AsyncMock(return_value="rtsp://camera"),
         ),
-        patch(f"{MODULE}.async_source_has_audio", AsyncMock(return_value=False)),
+        patch(
+            f"{MODULE}.async_probe_source", AsyncMock(return_value=dict(EMPTY_PROFILE))
+        ),
     ):
         _enable_recording(accessory)
         await hass.async_block_till_done()
@@ -985,7 +1004,7 @@ async def test_the_recorder_reuses_the_probed_audio_track(hass, accessory):
             f"{MODULE}.camera.async_get_stream_source",
             AsyncMock(return_value="rtsp://camera"),
         ),
-        patch(f"{MODULE}.async_source_has_audio", AsyncMock()) as probe,
+        patch(f"{MODULE}.async_probe_source", AsyncMock()) as probe,
     ):
         _enable_recording(accessory)
         await hass.async_block_till_done()
@@ -1006,7 +1025,7 @@ async def test_the_recorder_probes_again_when_the_camera_was_unreachable(
             AsyncMock(return_value="rtsp://camera"),
         ),
         patch(
-            f"{MODULE}.async_source_has_audio", AsyncMock(return_value=True)
+            f"{MODULE}.async_probe_source", AsyncMock(return_value=_PROBED_WITH_AUDIO)
         ) as probe,
     ):
         _enable_recording(accessory)
@@ -1014,6 +1033,113 @@ async def test_the_recorder_probes_again_when_the_camera_was_unreachable(
 
     probe.assert_awaited()
     assert recorder.async_start.await_args.args[0].source_has_audio is True
+
+
+async def test_a_probe_that_failed_is_not_repeated_on_the_next_start(hass, accessory):
+    """A camera that is not answering costs fifteen seconds under the lock."""
+    recorder = _mock_recorder(accessory)
+    accessory._source_profile = dict(EMPTY_PROFILE)
+
+    with (
+        patch(
+            f"{MODULE}.camera.async_get_stream_source",
+            AsyncMock(return_value="rtsp://camera"),
+        ),
+        patch(
+            f"{MODULE}.async_probe_source", AsyncMock(return_value=dict(EMPTY_PROFILE))
+        ) as probe,
+    ):
+        _enable_recording(accessory)
+        await hass.async_block_till_done()
+        recorder.is_running = False
+        await accessory._async_sync_recorder()
+
+    assert probe.await_count == 1
+    assert recorder.async_start.await_count == 2
+
+
+async def test_a_probe_that_answered_is_remembered(hass, accessory):
+    recorder = _mock_recorder(accessory)
+    accessory._source_profile = dict(EMPTY_PROFILE)
+
+    with (
+        patch(
+            f"{MODULE}.camera.async_get_stream_source",
+            AsyncMock(return_value="rtsp://camera"),
+        ),
+        patch(
+            f"{MODULE}.async_probe_source", AsyncMock(return_value=_PROBED_WITH_AUDIO)
+        ) as probe,
+    ):
+        _enable_recording(accessory)
+        await hass.async_block_till_done()
+        recorder.is_running = False
+        await accessory._async_sync_recorder()
+
+    assert probe.await_count == 1
+    assert accessory._source_profile["audio_codec"] == "aac"
+
+
+async def test_a_recorder_that_keeps_failing_is_reported_once(accessory):
+    from custom_components.homekit_secure_video.accessory.camera_accessory import (
+        UNHEALTHY_RECORDER_RESTARTS,
+    )
+
+    reported: list[bool] = []
+    accessory.set_recorder_health_callback(
+        lambda: reported.append(accessory.is_recorder_unhealthy)
+    )
+
+    accessory._recorder_restart_failures = UNHEALTHY_RECORDER_RESTARTS
+    accessory._report_recorder_health()
+    accessory._report_recorder_health()
+
+    assert reported == [True]
+    assert accessory.is_recorder_unhealthy
+
+    accessory._recorder_restart_failures = 0
+    accessory._report_recorder_health()
+
+    assert reported == [True, False]
+    assert not accessory.is_recorder_unhealthy
+
+
+async def test_a_recorder_that_stays_up_counts_as_recovered(accessory):
+    from custom_components.homekit_secure_video.accessory.camera_accessory import (
+        UNHEALTHY_RECORDER_RESTARTS,
+    )
+
+    _mock_recorder(accessory).is_running = True
+    accessory._recorder_restart_failures = UNHEALTHY_RECORDER_RESTARTS
+    accessory._report_recorder_health()
+    accessory._recorder_started_at = 123.0
+    reported: list[bool] = []
+    accessory.set_recorder_health_callback(
+        lambda: reported.append(accessory.is_recorder_unhealthy)
+    )
+
+    with patch(f"{MODULE}.HEALTHY_RECORDER_RUN_SECONDS", 0):
+        await accessory._async_confirm_recorder_health(123.0)
+
+    assert accessory._recorder_restart_failures == 0
+    assert reported == [False]
+
+
+async def test_a_run_that_was_replaced_does_not_count_as_recovered(accessory):
+    from custom_components.homekit_secure_video.accessory.camera_accessory import (
+        UNHEALTHY_RECORDER_RESTARTS,
+    )
+
+    _mock_recorder(accessory).is_running = True
+    accessory._recorder_restart_failures = UNHEALTHY_RECORDER_RESTARTS
+    accessory._report_recorder_health()
+    accessory._recorder_started_at = 456.0
+
+    with patch(f"{MODULE}.HEALTHY_RECORDER_RUN_SECONDS", 0):
+        await accessory._async_confirm_recorder_health(123.0)
+
+    assert accessory._recorder_restart_failures == UNHEALTHY_RECORDER_RESTARTS
+    assert accessory.is_recorder_unhealthy
 
 
 async def test_a_storm_of_state_changes_queues_one_synchronisation(accessory):

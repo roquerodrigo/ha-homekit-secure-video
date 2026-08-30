@@ -99,6 +99,10 @@
     "oversized_source": {
       "title": "{entry}: a câmera envia uma imagem maior do que a negociada com o HomeKit",
       "description": "`{camera}` envia {source_resolution}, maior que os {offered_resolution} oferecidos ao HomeKit, e a recodificação está desligada — nada reduz a imagem, então o HomeKit recebe algo diferente do que pediu. Aponte esta entrada para um fluxo de menor resolução da câmera, ou ligue a recodificação reconfigurando esta entrada."
+    },
+    "recorder_unavailable": {
+      "title": "{entry}: a câmera não se mantém gravando",
+      "description": "O codificador de `{camera}` parou e precisou ser reiniciado várias vezes seguidas sem nunca se manter no ar, então o HomeKit está recebendo uma câmera que não grava nada. Normalmente é a câmera recusando ou derrubando a transmissão — verifique se ela está acessível e se a integração dela consegue servir a transmissão de forma contínua. O log do Home Assistant traz o que o ffmpeg relatou a cada desistência."
     }
   }
 }

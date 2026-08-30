@@ -13,7 +13,7 @@ from .recorder import HomeKitSecureVideoRecorder
 from .recording_session import HomeKitSecureVideoRecordingSession
 from .selected_configuration import HomeKitSecureVideoSelectedConfiguration
 from .source_match import source_matches_configuration
-from .source_probe import async_probe_source, async_source_has_audio
+from .source_probe import async_probe_source
 from .supported_configuration import HomeKitSecureVideoSupportedConfiguration
 
 __all__ = [
@@ -27,6 +27,5 @@ __all__ = [
     "HomeKitSecureVideoSelectedConfiguration",
     "HomeKitSecureVideoSupportedConfiguration",
     "async_probe_source",
-    "async_source_has_audio",
     "source_matches_configuration",
 ]
