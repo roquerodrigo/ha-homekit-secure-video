@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 ISSUE_NO_STREAM_SOURCE = "no_stream_source"
 ISSUE_UNSUPPORTED_CODEC = "unsupported_codec"
 ISSUE_OVERSIZED_SOURCE = "oversized_source"
+ISSUE_RECORDER_UNAVAILABLE = "recorder_unavailable"
 
 SUPPORTED_VIDEO_CODEC = "h264"
 
@@ -79,6 +80,30 @@ def async_review_camera_source(
     )
 
 
+def async_review_recorder_health(
+    hass: HomeAssistant,
+    entry: HomeKitSecureVideoConfigEntry,
+    *,
+    failing: bool,
+) -> None:
+    """
+    Report a camera whose recorder cannot stay up, and withdraw it when it can.
+
+    Unlike the issues above this one is not decided by the probe: it is the
+    encoder giving up over and over, which nothing else surfaces — the hub
+    keeps asking, every answer is a rejection at debug level, and the camera
+    quietly records nothing.
+    """
+    config = cast("HomeKitSecureVideoConfigData", entry.data)
+    _async_apply(
+        hass,
+        entry,
+        ISSUE_RECORDER_UNAVAILABLE,
+        raised=failing,
+        placeholders={"camera": config["camera_entity_id"]},
+    )
+
+
 def _async_apply(
     hass: HomeAssistant,
     entry: HomeKitSecureVideoConfigEntry,
@@ -111,5 +136,6 @@ def async_clear_camera_source_issues(
         ISSUE_NO_STREAM_SOURCE,
         ISSUE_UNSUPPORTED_CODEC,
         ISSUE_OVERSIZED_SOURCE,
+        ISSUE_RECORDER_UNAVAILABLE,
     ):
         issue_registry.async_delete_issue(hass, DOMAIN, f"{entry.entry_id}_{issue}")

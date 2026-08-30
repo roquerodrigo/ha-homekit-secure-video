@@ -99,6 +99,10 @@
     "oversized_source": {
       "title": "{entry}: the camera sends a larger picture than HomeKit negotiated",
       "description": "`{camera}` sends {source_resolution}, larger than the {offered_resolution} offered to HomeKit, and re-encoding is turned off — nothing scales it down, so HomeKit receives a picture it did not ask for. Either point this entry at a lower-resolution stream of the camera, or turn re-encoding on by reconfiguring this entry."
+    },
+    "recorder_unavailable": {
+      "title": "{entry}: the camera keeps dropping out of recording",
+      "description": "The encoder for `{camera}` stopped and had to be restarted several times in a row without ever staying up, so HomeKit is being offered a camera that records nothing. The camera is usually refusing or dropping the stream — check that it is reachable and that its integration can serve the stream continuously. The Home Assistant log carries what ffmpeg reported each time it gave up."
     }
   }
 }

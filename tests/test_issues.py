@@ -7,9 +7,11 @@ from custom_components.homekit_secure_video.const import DOMAIN
 from custom_components.homekit_secure_video.issues import (
     ISSUE_NO_STREAM_SOURCE,
     ISSUE_OVERSIZED_SOURCE,
+    ISSUE_RECORDER_UNAVAILABLE,
     ISSUE_UNSUPPORTED_CODEC,
     async_clear_camera_source_issues,
     async_review_camera_source,
+    async_review_recorder_health,
 )
 from custom_components.homekit_secure_video.recording.source_probe import EMPTY_PROFILE
 
@@ -103,9 +105,35 @@ def test_removing_an_entry_withdraws_every_issue(hass, config_entry):
     assert _issue(hass, config_entry, ISSUE_UNSUPPORTED_CODEC) is None
 
 
+def test_a_recorder_that_cannot_stay_up_raises_an_issue(hass, config_entry):
+    async_review_recorder_health(hass, config_entry, failing=True)
+
+    assert _issue(hass, config_entry, ISSUE_RECORDER_UNAVAILABLE) is not None
+
+
+def test_a_recovered_recorder_withdraws_its_issue(hass, config_entry):
+    async_review_recorder_health(hass, config_entry, failing=True)
+    async_review_recorder_health(hass, config_entry, failing=False)
+
+    assert _issue(hass, config_entry, ISSUE_RECORDER_UNAVAILABLE) is None
+
+
+def test_removing_an_entry_withdraws_the_recorder_issue(hass, config_entry):
+    async_review_recorder_health(hass, config_entry, failing=True)
+
+    async_clear_camera_source_issues(hass, config_entry)
+
+    assert _issue(hass, config_entry, ISSUE_RECORDER_UNAVAILABLE) is None
+
+
 @pytest.mark.parametrize(
     "issue",
-    [ISSUE_NO_STREAM_SOURCE, ISSUE_UNSUPPORTED_CODEC, ISSUE_OVERSIZED_SOURCE],
+    [
+        ISSUE_NO_STREAM_SOURCE,
+        ISSUE_UNSUPPORTED_CODEC,
+        ISSUE_OVERSIZED_SOURCE,
+        ISSUE_RECORDER_UNAVAILABLE,
+    ],
 )
 def test_every_issue_is_translated(issue):
     import json

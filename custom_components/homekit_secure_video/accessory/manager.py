@@ -18,6 +18,7 @@ from ..datastream import HomeKitSecureVideoDataStreamServer
 from ..issues import (
     async_clear_camera_source_issues,
     async_review_camera_source,
+    async_review_recorder_health,
 )
 from ..recording.source_probe import EMPTY_PROFILE, async_probe_source
 from .camera_accessory import HomeKitSecureVideoCameraAccessory
@@ -244,6 +245,7 @@ class HomeKitSecureVideoAccessoryManager:
             source_profile,
         )
         accessory.set_status_changed_callback(self._notify_status_listeners)
+        accessory.set_recorder_health_callback(self._report_recorder_health)
 
         await self._hass.async_add_executor_job(driver.add_accessory, accessory)
         self._driver = driver
@@ -252,6 +254,15 @@ class HomeKitSecureVideoAccessoryManager:
         await driver.async_start()
         LOGGER.debug("Published %s on port %s", self._entry.title, config["port"])
         self._notify_status_listeners()
+
+    def _report_recorder_health(self) -> None:
+        """Turn the accessory losing its recorder into a repair issue."""
+        accessory = self._accessory
+        if accessory is None:
+            return
+        async_review_recorder_health(
+            self._hass, self._entry, failing=accessory.is_recorder_unhealthy
+        )
 
     async def async_stop(self) -> None:
         """

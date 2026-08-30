@@ -40,7 +40,6 @@ from ..recording import (
     HomeKitSecureVideoRecordingCommand,
     HomeKitSecureVideoSupportedConfiguration,
     async_probe_source,
-    async_source_has_audio,
     source_matches_configuration,
 )
 from ..recording.constants import (
@@ -116,6 +115,15 @@ MAX_RECORDER_RESTART_DELAY_SECONDS = 300
 # A run this long counts as the camera having worked, so the next failure
 # starts backing off from the beginning again.
 HEALTHY_RECORDER_RUN_SECONDS = 60
+# This many restarts in a row without a healthy run is a camera that is not
+# recording at all, which is worth telling the user about rather than leaving
+# in the log.
+UNHEALTHY_RECORDER_RESTARTS = 3
+# A probe that timed out costs fifteen seconds under the recorder lock, with
+# the hub waiting on the other end. A camera that is not answering is not
+# going to answer the next restart either, so the answer is reused until the
+# camera has had time to come back.
+SOURCE_PROBE_RETRY_SECONDS = 600
 ADVERTISED_FPS = 30
 
 # AAC-ELD needs libfdk_aac, which the Home Assistant ffmpeg build does
@@ -184,6 +192,9 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         self._stream_audio = options.get("stream_audio", DEFAULT_STREAM_AUDIO)
         self._stream_sessions: dict[str, HomeKitSecureVideoLiveStreamSession] = {}
         self._status_changed: Callable[[], None] | None = None
+        self._recorder_health_changed: Callable[[], None] | None = None
+        self._recorder_unhealthy = False
+        self._source_probe_failed_at: float | None = None
         # HomeKit writes several characteristics in a burst when it configures
         # the camera, and each write schedules a sync. Without this lock they
         # all pass the "already running" check before the first ffmpeg exists
@@ -265,6 +276,11 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         return self._recording_management.is_recording_in_flight
 
     @property
+    def is_recorder_unhealthy(self) -> bool:
+        """Return whether the recorder keeps failing to stay up."""
+        return self._recorder_unhealthy
+
+    @property
     def last_recording(self) -> datetime | None:
         """Return when the last recording finished being delivered."""
         return self._recording_management.last_recording
@@ -278,6 +294,10 @@ class HomeKitSecureVideoCameraAccessory(Camera):
     def is_streaming(self) -> bool:
         """Return whether at least one live stream session is running."""
         return any(session.is_running for session in self._stream_sessions.values())
+
+    def set_recorder_health_callback(self, callback: Callable[[], None]) -> None:
+        """Register the callback fired when the recorder stops keeping up."""
+        self._recorder_health_changed = callback
 
     def set_status_changed_callback(self, callback: Callable[[], None]) -> None:
         """Register the callback fired whenever the streaming state changes."""
@@ -605,7 +625,23 @@ class HomeKitSecureVideoCameraAccessory(Camera):
             loop.time() - started_at >= HEALTHY_RECORDER_RUN_SECONDS
         ):
             self._recorder_restart_failures = 0
+        self._report_recorder_health()
         self._track_recorder_task(self._async_restart_recorder())
+
+    def _report_recorder_health(self) -> None:
+        """
+        Tell the manager when the recorder stops being able to stay up.
+
+        Every restart is a clip the camera did not record, and all of it lives
+        in the log: without this a camera can go a whole night without a single
+        recording and say so nowhere the user looks.
+        """
+        unhealthy = self._recorder_restart_failures >= UNHEALTHY_RECORDER_RESTARTS
+        if unhealthy == self._recorder_unhealthy:
+            return
+        self._recorder_unhealthy = unhealthy
+        if self._recorder_health_changed is not None:
+            self._recorder_health_changed()
 
     async def _async_restart_recorder(self) -> None:
         """
@@ -629,11 +665,42 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         another ffprobe — up to fifteen seconds, under the recorder lock, while
         the hub waits — on every start, and the recorder restarts on its own.
         A profile with no video codec is one whose probe failed, and only that
-        is worth asking again.
+        is worth asking again: an answer is kept for good, and a camera that
+        does not answer is left alone until it has had time to come back.
         """
         if self._source_profile.get("video_codec") is not None:
             return self._source_profile.get("audio_codec") is not None
-        return await async_source_has_audio(self._ffmpeg_binary, stream_source)
+
+        now = asyncio.get_running_loop().time()
+        failed_at = self._source_probe_failed_at
+        if failed_at is not None and now - failed_at < SOURCE_PROBE_RETRY_SECONDS:
+            return False
+
+        profile = await async_probe_source(self._ffmpeg_binary, stream_source)
+        if profile.get("video_codec") is None:
+            self._source_probe_failed_at = now
+            return False
+
+        self._source_profile = profile
+        self._source_probe_failed_at = None
+        return profile.get("audio_codec") is not None
+
+    async def _async_confirm_recorder_health(self, started_at: float) -> None:
+        """
+        Count a run that lasted as the camera having recovered.
+
+        Waiting for the run to end would keep the issue up — and the backoff
+        long — for a camera that is recording perfectly well again.
+        """
+        await asyncio.sleep(HEALTHY_RECORDER_RUN_SECONDS)
+        if (
+            self._stopped
+            or self._recorder_started_at != started_at
+            or not self._recorder.is_running
+        ):
+            return
+        self._recorder_restart_failures = 0
+        self._report_recorder_health()
 
     def _next_recorder_restart_delay(self) -> int:
         """Return how long to wait before starting the recorder again."""
@@ -722,6 +789,8 @@ class HomeKitSecureVideoCameraAccessory(Camera):
 
         if not should_record or configuration is None:
             self._recording_settings = None
+            self._recorder_restart_failures = 0
+            self._report_recorder_health()
             await self._recorder.async_stop()
             return
 
@@ -747,7 +816,9 @@ class HomeKitSecureVideoCameraAccessory(Camera):
             and await self._async_source_has_audio(stream_source)
         )
         self._recording_settings = wanted
-        self._recorder_started_at = asyncio.get_running_loop().time()
+        started_at = asyncio.get_running_loop().time()
+        self._recorder_started_at = started_at
+        self._track_recorder_task(self._async_confirm_recorder_health(started_at))
         await self._recorder.async_start(
             HomeKitSecureVideoRecordingCommand(
                 input_source=stream_source,

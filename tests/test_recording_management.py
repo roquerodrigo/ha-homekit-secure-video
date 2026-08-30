@@ -283,6 +283,51 @@ def test_a_broken_listener_does_not_fail_the_write(recorder, operating_mode):
     assert management.is_recording_enabled
 
 
+@pytest.fixture
+def announced(recorder, operating_mode, data_stream_server):
+    """A management service reporting every state change it announces."""
+    changes: list[bool] = []
+    service = HomeKitSecureVideoRecordingManagementService(
+        SUPPORTED,
+        recorder,
+        operating_mode,
+        data_stream_server,
+        lambda: changes.append(True),
+    )
+    return service, changes
+
+
+def test_rewriting_the_same_configuration_announces_nothing(announced):
+    """A hub that cannot record rewrites the configuration it already chose."""
+    management, changes = announced
+    configuration = _selected_tlv()
+
+    _write(management.service, "SelectedCameraRecordingConfiguration", configuration)
+    after_first_write = len(changes)
+    for _ in range(5):
+        _write(
+            management.service, "SelectedCameraRecordingConfiguration", configuration
+        )
+
+    assert after_first_write == 1
+    assert len(changes) == after_first_write
+    assert management.selected_configuration is not None
+
+
+def test_a_changed_configuration_is_still_announced(announced):
+    management, changes = announced
+
+    _write(management.service, "SelectedCameraRecordingConfiguration", _selected_tlv())
+    _write(
+        management.service,
+        "SelectedCameraRecordingConfiguration",
+        _selected_tlv(width=1280, height=720),
+    )
+
+    assert len(changes) == 2
+    assert management.selected_configuration.width == 1280
+
+
 def test_reading_the_configuration_before_one_is_chosen_fails(management):
     from custom_components.homekit_secure_video.exceptions import (
         HomeKitSecureVideoRecordingError,

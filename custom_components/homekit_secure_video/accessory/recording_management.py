@@ -287,6 +287,13 @@ class HomeKitSecureVideoRecordingManagementService:
         configuration this integration cannot read is logged and dropped
         instead, leaving recording off rather than the whole camera broken.
         """
+        # A hub that cannot record rewrites the configuration it already
+        # negotiated hundreds of times a minute. Re-announcing a change that
+        # did not happen republishes every entity of the entry behind it, so
+        # an identical write is the same as no write at all.
+        if value == self._selected_value:
+            return
+
         LOGGER.debug("HomeKit wrote the recording configuration %s", value)
         try:
             self._selected = HomeKitSecureVideoSelectedConfiguration.from_tlv(value)

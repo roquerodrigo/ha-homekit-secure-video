@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections import deque
 from typing import TYPE_CHECKING
 
 from ..const import LOGGER
@@ -21,6 +22,10 @@ if TYPE_CHECKING:
 TERMINATE_TIMEOUT_SECONDS = 5
 KILL_TIMEOUT_SECONDS = 5
 SUBSCRIBER_QUEUE_SIZE = 16
+# What ffmpeg wrote before it gave up is the only account of why a camera
+# stopped recording, and it is written right before the stream ends.
+STDERR_LINES_KEPT = 10
+STDERR_DRAIN_SECONDS = 1
 
 
 class HomeKitSecureVideoRecorder:
@@ -38,6 +43,8 @@ class HomeKitSecureVideoRecorder:
         self._ffmpeg_binary = ffmpeg_binary
         self._process: asyncio.subprocess.Process | None = None
         self._reader_task: asyncio.Task[None] | None = None
+        self._stderr_task: asyncio.Task[None] | None = None
+        self._stderr_lines: deque[str] = deque(maxlen=STDERR_LINES_KEPT)
         self._prebuffer: HomeKitSecureVideoPrebuffer | None = None
         self._initialization_segment: bytes | None = None
         self._subscribers: list[asyncio.Queue[bytes]] = []
@@ -88,33 +95,47 @@ class HomeKitSecureVideoRecorder:
         LOGGER.debug(
             "Starting recorder: ffmpeg %s", redact_credentials(" ".join(arguments))
         )
+        self._stderr_lines.clear()
         try:
             self._process = await asyncio.create_subprocess_exec(
                 self._ffmpeg_binary,
                 *arguments,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
             )
         except OSError:
             LOGGER.exception("Failed to start ffmpeg for recording")
             return False
 
-        self._reader_task = asyncio.create_task(self._async_read_segments())
+        process = self._process
+        self._reader_task = asyncio.create_task(self._async_read_segments(process))
+        self._stderr_task = asyncio.create_task(self._async_read_stderr(process))
         return True
 
     async def async_stop(self) -> None:
         """Stop ffmpeg and drop the prebuffer."""
         LOGGER.debug("Stopping the recorder")
         reader_task = self._reader_task
+        stderr_task = self._stderr_task
         self._reader_task = None
-        if reader_task is not None:
-            reader_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await reader_task
+        self._stderr_task = None
+        await _cancel(reader_task)
+        await _cancel(stderr_task)
 
         process = self._process
         self._process = None
-        if process is not None and process.returncode is None:
+        if process is not None:
+            await self._async_end(process)
+
+        if self._prebuffer is not None:
+            self._prebuffer.clear()
+        self._initialization_segment = None
+        self._subscribers.clear()
+        LOGGER.debug("Recorder stopped")
+
+    async def _async_end(self, process: asyncio.subprocess.Process) -> int | None:
+        """Terminate ffmpeg if it is still alive, and report how it exited."""
+        if process.returncode is None:
             with contextlib.suppress(ProcessLookupError):
                 process.terminate()
             try:
@@ -136,12 +157,7 @@ class HomeKitSecureVideoRecorder:
                         "Gave up waiting for ffmpeg %s to exit after killing it",
                         process.pid,
                     )
-
-        if self._prebuffer is not None:
-            self._prebuffer.clear()
-        self._initialization_segment = None
-        self._subscribers.clear()
-        LOGGER.debug("Recorder stopped")
+        return process.returncode
 
     def subscribe(self) -> asyncio.Queue[bytes]:
         """Return a queue receiving every fragment recorded from now on."""
@@ -154,10 +170,9 @@ class HomeKitSecureVideoRecorder:
         if queue in self._subscribers:
             self._subscribers.remove(queue)
 
-    async def _async_read_segments(self) -> None:
+    async def _async_read_segments(self, process: asyncio.subprocess.Process) -> None:
         """Feed the prebuffer and the subscribers until ffmpeg exits."""
-        process = self._process
-        if process is None or process.stdout is None:
+        if process.stdout is None:
             return
 
         async for is_initialization, payload in read_segments(process.stdout):
@@ -173,12 +188,46 @@ class HomeKitSecureVideoRecorder:
         # dropped RTSP session — and the segment it left behind describes a
         # stream that no longer exists.
         self._initialization_segment = None
+        # The end of the output is not the end of the process: ffmpeg can stop
+        # producing fragments while it is still alive, and its exit code is
+        # only known once it has been waited for. Leaving it running would
+        # keep an encode nothing reads any more, and would keep `is_running`
+        # answering True — which is what lets the hub open a recording against
+        # a recorder that has nothing left to send.
+        exit_code = await self._async_end(process)
+        if self._process is process:
+            self._process = None
+        if self._stderr_task is not None:
+            await asyncio.wait({self._stderr_task}, timeout=STDERR_DRAIN_SECONDS)
         LOGGER.warning(
-            "The recorder stopped on its own, ffmpeg exit code %s",
-            process.returncode,
+            "The recorder stopped on its own, ffmpeg exit code %s%s",
+            exit_code,
+            self._last_ffmpeg_error,
         )
         if self._stream_ended is not None:
             self._stream_ended()
+
+    async def _async_read_stderr(self, process: asyncio.subprocess.Process) -> None:
+        """
+        Keep the last lines ffmpeg wrote, to explain why it stopped.
+
+        The process is passed in rather than read back off the recorder: by
+        the time this runs the recorder may already have let go of the process
+        that wrote the very line worth keeping.
+        """
+        if process.stderr is None:
+            return
+
+        while line := await process.stderr.readline():
+            self._stderr_lines.append(line.decode(errors="replace").strip())
+
+    @property
+    def _last_ffmpeg_error(self) -> str:
+        """Return what ffmpeg last wrote, ready to append to a log line."""
+        lines = [line for line in self._stderr_lines if line]
+        if not lines:
+            return ""
+        return f": {redact_credentials(' / '.join(lines))}"
 
     def _publish(self, fragment: bytes) -> None:
         """Hand a fragment to every subscriber, dropping it when one is behind."""
@@ -187,3 +236,12 @@ class HomeKitSecureVideoRecorder:
                 queue.put_nowait(fragment)
             except asyncio.QueueFull:
                 LOGGER.warning("Dropping a recording fragment: subscriber is behind")
+
+
+async def _cancel(task: asyncio.Task[None] | None) -> None:
+    """Stop one of the recorder's tasks and wait for it to unwind."""
+    if task is None:
+        return
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task

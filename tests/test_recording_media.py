@@ -16,7 +16,6 @@ from custom_components.homekit_secure_video.recording import (
     HomeKitSecureVideoRecordingCommand,
     HomeKitSecureVideoSelectedConfiguration,
     async_probe_source,
-    async_source_has_audio,
 )
 from custom_components.homekit_secure_video.recording.fragmented_mp4 import (
     read_segments,
@@ -262,7 +261,9 @@ async def test_probe_reports_audio_when_ffprobe_finds_it():
     with patch(
         "asyncio.create_subprocess_exec", AsyncMock(return_value=_probe_process())
     ):
-        assert await async_source_has_audio("/usr/bin/ffmpeg", "rtsp://camera/stream")
+        profile = await async_probe_source("/usr/bin/ffmpeg", "rtsp://camera/stream")
+
+    assert profile["audio_codec"] is not None
 
 
 @pytest.mark.parametrize(
@@ -288,12 +289,16 @@ async def test_probe_reports_no_audio_on_an_empty_answer():
     with patch(
         "asyncio.create_subprocess_exec", AsyncMock(return_value=_probe_process(stdout))
     ):
-        assert not await async_source_has_audio("/usr/bin/ffmpeg", "rtsp://camera")
+        profile = await async_probe_source("/usr/bin/ffmpeg", "rtsp://camera")
+
+    assert profile["audio_codec"] is None
 
 
 async def test_probe_survives_a_missing_ffprobe():
     with patch("asyncio.create_subprocess_exec", AsyncMock(side_effect=OSError)):
-        assert not await async_source_has_audio("/usr/bin/ffmpeg", "rtsp://camera")
+        profile = await async_probe_source("/usr/bin/ffmpeg", "rtsp://camera")
+
+    assert profile["audio_codec"] is None
 
 
 async def test_probe_gives_up_when_it_times_out():
@@ -301,7 +306,9 @@ async def test_probe_gives_up_when_it_times_out():
     process.communicate = AsyncMock(side_effect=TimeoutError)
     process.wait = AsyncMock(return_value=0)
     with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=process)):
-        assert not await async_source_has_audio("/usr/bin/ffmpeg", "rtsp://camera")
+        profile = await async_probe_source("/usr/bin/ffmpeg", "rtsp://camera")
+
+    assert profile["video_codec"] is None
     assert process.kill.call_count == 1
 
 
@@ -310,10 +317,13 @@ def recorder():
     return HomeKitSecureVideoRecorder("ffmpeg")
 
 
-def _process(stream: bytes, *, still_running: bool = True) -> MagicMock:
+def _process(
+    stream: bytes, *, still_running: bool = True, complaint: bytes = b""
+) -> MagicMock:
     """Stand in for ffmpeg; a still running one has not closed its stdout."""
     process = MagicMock(returncode=None)
     process.stdout = _reader(stream, at_end=not still_running)
+    process.stderr = _reader(complaint, at_end=not still_running)
     process.wait = AsyncMock(return_value=0)
     return process
 
@@ -478,6 +488,67 @@ async def test_a_recorder_that_ends_on_its_own_reports_it(recorder):
 
     assert ended == [True]
     assert recorder.initialization_segment is None
+    await recorder.async_stop()
+
+
+async def test_a_recorder_that_ends_on_its_own_stops_ffmpeg(recorder, caplog):
+    """The end of the output is not the end of the process."""
+    stream = _box(b"ftyp") + _box(b"moov")
+    command = HomeKitSecureVideoRecordingCommand(
+        input_source="rtsp://admin:hunter2@camera",
+        configuration=CONFIGURATION,
+        source_has_audio=False,
+    )
+    process = _process(
+        stream,
+        still_running=False,
+        complaint=b"rtsp://admin:hunter2@camera: Connection refused\n",
+    )
+
+    def exit_with_eight() -> int:
+        process.returncode = 8
+        return 8
+
+    process.wait = AsyncMock(side_effect=exit_with_eight)
+    ended: list[bool] = []
+    recorder.set_stream_ended_callback(lambda: ended.append(True))
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=process)):
+        await recorder.async_start(command, CONFIGURATION)
+        async with asyncio.timeout(5):
+            while not ended:
+                await asyncio.sleep(0)
+
+    assert process.terminate.call_count == 1
+    assert not recorder.is_running
+    assert "ffmpeg exit code 8" in caplog.text
+    assert "Connection refused" in caplog.text
+    assert "hunter2" not in caplog.text
+    await recorder.async_stop()
+
+
+async def test_a_recorder_that_ends_without_a_complaint_still_reports_its_exit(
+    recorder, caplog
+):
+    stream = _box(b"ftyp") + _box(b"moov")
+    command = HomeKitSecureVideoRecordingCommand(
+        input_source="rtsp://camera",
+        configuration=CONFIGURATION,
+        source_has_audio=False,
+    )
+    process = _process(stream, still_running=False)
+    process.returncode = 0
+    ended: list[bool] = []
+    recorder.set_stream_ended_callback(lambda: ended.append(True))
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=process)):
+        await recorder.async_start(command, CONFIGURATION)
+        async with asyncio.timeout(5):
+            while not ended:
+                await asyncio.sleep(0)
+
+    assert process.terminate.call_count == 0
+    assert "ffmpeg exit code 0" in caplog.text
     await recorder.async_stop()
 
 
