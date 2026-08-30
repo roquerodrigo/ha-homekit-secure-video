@@ -8,11 +8,7 @@ Before creating, renaming or restructuring any file/class/function, **read [`COD
 
 For user-facing topics (installation, roadmap, layout diagram, useful commands, CI list), see [`README.md`](./README.md).
 
-This file deliberately avoids restating those rules — it only adds:
-
-1. The verification workflow agents must run after every change.
-2. The architectural reasoning that is not obvious from `CODE_STYLE.md` alone.
-3. What is implemented here and what is still missing.
+This file adds only the verification workflow, the architectural reasoning that is not obvious from `CODE_STYLE.md`, and what is and is not implemented.
 
 ## Project status
 
@@ -50,14 +46,6 @@ The Home Assistant version is pinned in two places and **must be updated togethe
 Verify the pairing on PyPI before committing: the `requires_dist` of `pytest-homeassistant-custom-component` must list the same `homeassistant==<X.Y.Z>` you pinned in `pyproject.toml`.
 
 ## Architecture
-
-```
-config_flow.py        → picks the camera, reserves a HAP port, creates the ConfigEntry
-__init__.py           → builds the accessory manager + coordinator, starts the accessory
-accessory/manager.py  → owns the pyhap driver/accessory lifecycle; reports status changes
-accessory/camera_accessory.py → the HAP camera: streams, snapshots, motion
-coordinator.py        → holds the accessory status; entities read it
-```
 
 ### One accessory per entry, never a bridge
 
