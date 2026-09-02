@@ -3,6 +3,8 @@
 [![CI](https://github.com/roquerodrigo/ha-homekit-secure-video/actions/workflows/ci.yml/badge.svg)](https://github.com/roquerodrigo/ha-homekit-secure-video/actions/workflows/ci.yml)
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 
+[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-db61a2?logo=githubsponsors&logoColor=white&style=for-the-badge)](https://github.com/sponsors/roquerodrigo)
+
 [![Open your Home Assistant instance and open the repository inside HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=roquerodrigo&repository=ha-homekit-secure-video&category=integration)
 
 ---
@@ -206,6 +208,10 @@ All workflows call the reusable workflows in [`roquerodrigo/workflows`](https://
 ## Trademark
 
 Apple, HomeKit and the HomeKit logo are trademarks of Apple Inc. This project is not affiliated with, endorsed by, or sponsored by Apple Inc.
+
+## Support
+
+This integration is built and maintained on personal time, on hardware bought for the purpose. If it is useful to you, consider [sponsoring the work](https://github.com/sponsors/roquerodrigo) — it keeps the devices, the testing and the releases coming.
 
 ## License
 
