@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.3](https://github.com/roquerodrigo/ha-homekit-secure-video/compare/v0.1.2...v0.1.3) (2026-09-07)
+
+
+### Development Dependencies
+
+* **deps-dev:** bump ruff in the python-deps group ([2d46fcb](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/2d46fcb7086d93fb0e012437b01dd78d00831b15))
+* **deps-dev:** bump ruff in the python-deps group ([2ecd8de](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/2ecd8de337b49fd8d0a7c1597b0469f03deb92ae))
+
+
+### Documentation
+
+* add GitHub Sponsors button and support section ([c559757](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/c5597577b7089ba374b741c1917980b11356316d))
+* refresh CLAUDE.md ([e534bff](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/e534bffe3508d5c2e072a29c14418914fae49a42))
+
 ## [0.1.2](https://github.com/roquerodrigo/ha-homekit-secure-video/compare/v0.1.1...v0.1.2) (2026-08-31)
 
 
