@@ -22,19 +22,7 @@ Protocol references worth keeping at hand: `homebridge/HAP-NodeJS` (`src/lib/dat
 
 ## Verification workflow
 
-**After every code change, always run lint then tests, in that order, before declaring the task done. Either run `scripts/lint` (a thin wrapper that only chains the four commands) or run them directly:**
-
-```bash
-uv run ruff format --check .
-uv run ruff check .
-uv run mypy custom_components/homekit_secure_video
-uv run pytest
-```
-
-- Lint runs `ruff format`, `ruff check` and `mypy` — all configured in `pyproject.toml`. Fix any failure and re-run before moving on.
-- `pytest` enforces a **90 % coverage gate** (`--cov-fail-under` in `pyproject.toml`).
-
-Both gates mirror CI (`.github/workflows/ci.yml`). Skip this only when the change literally cannot affect lint or tests (e.g., README-only edits).
+**After every code change, always run lint then tests, in that order, before declaring the task done.** `scripts/lint` chains the four commands — `ruff format --check`, `ruff check`, `mypy` and `pytest`, all configured in `pyproject.toml`. `pytest` enforces a **90 % coverage gate** (`--cov-fail-under`). Both gates mirror CI (`.github/workflows/ci.yml`); skip only when the change literally cannot affect lint or tests (e.g., README-only edits).
 
 ## Bumping the Home Assistant version
 
