@@ -406,3 +406,53 @@ async def test_a_recording_with_nothing_to_send_is_closed(connection, make_sessi
     assert close_event[2]["reason"] == int(
         HomeKitSecureVideoDataStreamCloseReason.UNEXPECTED_FAILURE
     )
+
+
+async def test_a_clip_ended_by_the_ceiling_is_not_reported_as_unacknowledged(
+    session, connection, recorder, caplog
+):
+    import logging
+
+    from custom_components.homekit_secure_video.recording import recording_session
+
+    caplog.set_level(logging.DEBUG, logger="custom_components.homekit_secure_video")
+    with (
+        patch.object(recording_session, "MAX_RECORDING_SECONDS", 0.01),
+        patch.object(recording_session, "CLOSE_TIMEOUT_SECONDS", 0),
+    ):
+        session.start()
+        await asyncio.sleep(0.05)
+        await _settle()
+
+    assert session.is_closed
+    assert "hit its time limit" in caplog.text
+    assert "ran out of fragments" not in caplog.text
+    unacknowledged = [
+        record
+        for record in caplog.records
+        if "never acknowledged" in record.getMessage()
+    ]
+    assert [record.levelno for record in unacknowledged] == [logging.DEBUG]
+
+
+async def test_a_clip_that_ran_out_of_fragments_still_warns_when_unacknowledged(
+    session, connection, recorder, caplog
+):
+    import logging
+
+    from custom_components.homekit_secure_video.recording import recording_session
+
+    caplog.set_level(logging.DEBUG, logger="custom_components.homekit_secure_video")
+    with (
+        patch.object(recording_session, "FRAGMENT_WAIT_SECONDS", 0),
+        patch.object(recording_session, "CLOSE_TIMEOUT_SECONDS", 0),
+    ):
+        session.start()
+        await _settle()
+
+    unacknowledged = [
+        record
+        for record in caplog.records
+        if "never acknowledged" in record.getMessage()
+    ]
+    assert [record.levelno for record in unacknowledged] == [logging.WARNING]

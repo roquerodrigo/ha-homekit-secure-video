@@ -37,7 +37,10 @@ class HomeKitSecureVideoRecordingStateStore:
 
     async def async_load(self) -> HomeKitSecureVideoRecordingState | None:
         """Return the state saved by the last run, if any."""
-        return await self._store.async_load()
+        state = await self._store.async_load()
+        if state is not None:
+            state.setdefault("source_profile", None)
+        return state
 
     def save(self, state: HomeKitSecureVideoRecordingState) -> None:
         """Write the state shortly, coalescing the writes of one burst."""

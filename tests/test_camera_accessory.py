@@ -1209,6 +1209,7 @@ async def test_the_recording_state_is_what_homekit_wrote(accessory):
         "event_snapshots_active": True,
         "homekit_camera_active": False,
         "periodic_snapshots_active": True,
+        "source_profile": dict(EMPTY_PROFILE),
     }
 
 

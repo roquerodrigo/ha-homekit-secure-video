@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, TypeGuard, cast
 
 from homeassistant.components import camera
 from homeassistant.components.ffmpeg import get_ffmpeg_manager
@@ -40,6 +40,13 @@ if TYPE_CHECKING:
     )
 
 STOP_TIMEOUT_SECONDS = 10
+
+
+def _is_known(
+    profile: HomeKitSecureVideoSourceProfile | None,
+) -> TypeGuard[HomeKitSecureVideoSourceProfile]:
+    """Return whether the profile came from a probe the camera answered."""
+    return profile is not None and profile["video_codec"] is not None
 
 
 async def _bounded(what: str, task: Coroutine[None, None, None]) -> bool:
@@ -158,13 +165,20 @@ class HomeKitSecureVideoAccessoryManager:
             return dict(EMPTY_PROFILE)  # type: ignore[return-value]
         return await accessory.async_probe_source()
 
-    async def _async_probe_configured_camera(self) -> HomeKitSecureVideoSourceProfile:
+    async def _async_probe_configured_camera(
+        self, last_known_profile: HomeKitSecureVideoSourceProfile | None
+    ) -> HomeKitSecureVideoSourceProfile:
         """
         Ask the configured camera what it sends, before publishing it.
 
         On a Home Assistant restart this can run before the integration owning
         the camera has set it up. That is not a broken configuration, just a
         race, so it is reported as "not ready" and Home Assistant retries.
+
+        A camera that has a stream but does not answer the probe is published
+        with what it sent the last time it did: the offer is built from the
+        profile, and an offer that changes with every unanswered probe takes
+        the negotiated recording configuration down with it.
         """
         config = cast("HomeKitSecureVideoConfigData", self._entry.data)
         try:
@@ -186,6 +200,13 @@ class HomeKitSecureVideoAccessoryManager:
             profile = await async_probe_source(
                 get_ffmpeg_manager(self._hass).binary, stream_source
             )
+            if profile["video_codec"] is None and _is_known(last_known_profile):
+                LOGGER.warning(
+                    "Camera %s did not answer the probe; publishing it with what "
+                    "it sent last time",
+                    config["camera_entity_id"],
+                )
+                profile = last_known_profile
         async_review_camera_source(
             self._hass,
             self._entry,
@@ -235,12 +256,14 @@ class HomeKitSecureVideoAccessoryManager:
         )
         driver.state.setup_id = config["setup_id"]
         await self._data_stream_server.async_start(source_ip)
+        recording_state = await self._recording_state_store.async_load()
         # What the camera sends decides whether its stream can be copied
         # instead of re-encoded, and whether it carries audio to map; it is
         # also what the repair issues report on.
-        source_profile = await self._async_probe_configured_camera()
+        source_profile = await self._async_probe_configured_camera(
+            recording_state["source_profile"] if recording_state else None
+        )
         LOGGER.debug("Camera %s sends %s", config["camera_entity_id"], source_profile)
-        recording_state = await self._recording_state_store.async_load()
         accessory = HomeKitSecureVideoCameraAccessory(
             driver,
             self._hass,
