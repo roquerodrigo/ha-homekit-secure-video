@@ -12,7 +12,6 @@ from ..streaming.live_stream_command import (
     level_name,
     profile_name,
 )
-from .constants import HomeKitSecureVideoRecordingAudioCodec
 
 if TYPE_CHECKING:
     from .selected_configuration import HomeKitSecureVideoSelectedConfiguration
@@ -21,7 +20,6 @@ MICROSECONDS_PER_MILLISECOND = 1000
 MILLISECONDS_PER_SECOND = 1000
 BITRATE_BUFFER_FACTOR = 2
 AAC_LOW_PROFILE = "aac_low"
-AAC_ELD_PROFILE = "aac_eld"
 
 
 @dataclass(frozen=True)
@@ -119,19 +117,13 @@ class HomeKitSecureVideoRecordingCommand:
     @property
     def _audio_arguments(self) -> list[str]:
         source = "0:a:0" if self.source_has_audio else "1:a:0"
-        profile = (
-            AAC_ELD_PROFILE
-            if self.configuration.audio_codec
-            == HomeKitSecureVideoRecordingAudioCodec.AAC_ELD
-            else AAC_LOW_PROFILE
-        )
         return [
             "-map",
             source,
             "-c:a",
             "aac",
             "-profile:a",
-            profile,
+            AAC_LOW_PROFILE,
             "-ac",
             str(self.configuration.audio_channels),
             "-ar",

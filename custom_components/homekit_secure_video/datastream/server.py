@@ -127,6 +127,11 @@ class HomeKitSecureVideoDataStreamServer:
         for session in self._prepared_sessions:
             session.cancel_expiry()
         self._prepared_sessions.clear()
+        # The server outlives the accessory it served, and the next one
+        # registers its own handlers and listeners; keeping the old ones
+        # would keep the old accessory graph reachable too.
+        self._handlers.clear()
+        self._connection_closed_listeners.clear()
 
         for connection in tuple(self._connections):
             connection.close()

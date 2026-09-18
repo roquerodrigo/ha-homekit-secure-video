@@ -28,7 +28,7 @@ async def async_setup_entry(
 
 
 class HomeKitSecureVideoResetPairingButton(HomeKitSecureVideoEntity, ButtonEntity):
-    """Drop every pairing and publish the accessory with a fresh code."""
+    """Drop every pairing and publish the accessory again, ready to pair."""
 
     _attr_entity_category = EntityCategory.CONFIG
     _attr_translation_key = "reset_pairing"

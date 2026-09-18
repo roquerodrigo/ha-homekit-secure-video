@@ -42,6 +42,12 @@ if TYPE_CHECKING:
 STOP_TIMEOUT_SECONDS = 10
 
 
+def _close_hap_server(driver: HomeKitSecureVideoAccessoryDriver) -> None:
+    """Release the HAP socket, if the driver got as far as opening it."""
+    if driver.http_server.server is not None:
+        driver.http_server.async_stop()
+
+
 def _is_known(
     profile: HomeKitSecureVideoSourceProfile | None,
 ) -> TypeGuard[HomeKitSecureVideoSourceProfile]:
@@ -104,6 +110,7 @@ class HomeKitSecureVideoAccessoryManager:
         self._hass = hass
         self._entry = entry
         self._driver: HomeKitSecureVideoAccessoryDriver | None = None
+        self._driver_started = False
         self._accessory: HomeKitSecureVideoCameraAccessory | None = None
         self._data_stream_server = HomeKitSecureVideoDataStreamServer()
         self._recording_state_store = HomeKitSecureVideoRecordingStateStore(
@@ -272,6 +279,10 @@ class HomeKitSecureVideoAccessoryManager:
             self._data_stream_server,
             source_profile,
         )
+        # Kept from this point so a start that fails further down still stops
+        # it: restoring the recording state below already starts its recorder.
+        self._accessory = accessory
+        self._driver = driver
         accessory.set_status_changed_callback(self._notify_status_listeners)
         accessory.set_recorder_health_callback(self._report_recorder_health)
         accessory.set_recording_state_changed_callback(
@@ -281,10 +292,8 @@ class HomeKitSecureVideoAccessoryManager:
             accessory.restore_recording_state(recording_state)
 
         await self._hass.async_add_executor_job(driver.add_accessory, accessory)
-        self._driver = driver
-        self._accessory = accessory
-
         await driver.async_start()
+        self._driver_started = True
         LOGGER.debug("Published %s on port %s", self._entry.title, config["port"])
         self._notify_status_listeners()
 
@@ -306,28 +315,52 @@ class HomeKitSecureVideoAccessoryManager:
         restart brings the camera back.
         """
         driver = self._driver
+        accessory = self._accessory
+        driver_started = self._driver_started
         self._driver = None
         self._accessory = None
+        self._driver_started = False
 
         async_clear_camera_source_issues(self._hass, self._entry)
         await _bounded("data stream server", self._data_stream_server.async_stop())
-        if driver is not None and not await _bounded(
-            "accessory driver", driver.async_stop()
-        ):
-            # pyhap unregisters mDNS before it closes the HAP socket, so a step
-            # that gave up halfway can leave the reserved port held.
-            driver.http_server.async_stop()
+        if driver is not None and driver_started:
+            if not await _bounded("accessory driver", driver.async_stop()):
+                # pyhap unregisters mDNS before it closes the HAP socket, so a
+                # step that gave up halfway can leave the reserved port held.
+                _close_hap_server(driver)
+        else:
+            # pyhap's own stop assumes a driver that started: it unregisters an
+            # mDNS service that was never registered and cancels a cleanup
+            # that was never scheduled, so a driver that failed to start is
+            # taken apart by hand instead.
+            if driver is not None:
+                _close_hap_server(driver)
+            if accessory is not None:
+                await _bounded("accessory", accessory.stop())
         await _bounded(
             "recording state store", self._recording_state_store.async_flush()
         )
         LOGGER.debug("Stopped the accessory of %s", self._entry.title)
+        self._notify_status_listeners()
 
     async def async_reset_pairing(self) -> None:
-        """Drop every pairing and publish the accessory with a fresh code."""
+        """
+        Drop every pairing and publish the accessory again, ready to pair.
+
+        The pairing code stays: it is pinned on the config entry, so the code
+        and QR code shown as entities remain the ones to pair with. A start
+        that fails here is handed to Home Assistant's own retry, since the
+        entry stays loaded and nothing else would bring the camera back.
+        """
         await self.async_stop()
         await self._hass.async_add_executor_job(self.remove_persist_file)
         await self.async_remove_recording_state()
-        await self.async_start()
+        try:
+            await self.async_start()
+        except Exception as exception:
+            self._hass.config_entries.async_schedule_reload(self._entry.entry_id)
+            message = f"Failed to publish the accessory again: {exception}"
+            raise HomeAssistantError(message) from exception
 
     def _create_driver(
         self,

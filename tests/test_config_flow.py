@@ -397,3 +397,22 @@ async def test_reconfigure_republishes_the_accessory(
 async def test_the_entry_has_no_separate_options_screen(hass, setup_integration):
     # Everything an entry carries is edited in one place, the reconfigure step.
     assert setup_integration.supports_options is False
+
+
+async def test_the_form_keeps_the_re_encoding_choice_after_an_error(hass):
+    hass.states.async_set(
+        "camera.snapshot_only",
+        "idle",
+        {"friendly_name": "Snapshot only", ATTR_SUPPORTED_FEATURES: 0},
+    )
+
+    result = await _start_user_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"camera_entity_id": "camera.snapshot_only", "reencode": False},
+    )
+
+    assert result["errors"] == {"camera_entity_id": "camera_without_stream"}
+    schema = result["data_schema"].schema
+    reencode = next(key for key in schema if str(key) == "reencode")
+    assert reencode.default() is False

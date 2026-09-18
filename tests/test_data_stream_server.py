@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -340,3 +341,13 @@ async def test_a_closed_connection_notifies_its_listeners(server):
 
     assert closed == [connection]
     assert server.connections == ()
+
+
+async def test_stopping_the_server_forgets_its_handlers_and_listeners(server):
+    server.register_handler("dataSend", "open", MagicMock())
+    server.register_connection_closed_listener(MagicMock())
+
+    await server.async_stop()
+
+    assert server._handlers == {}
+    assert server._connection_closed_listeners == []

@@ -523,7 +523,9 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         if self._motion_service is None:
             return
         self._motion_service.get_characteristic("MotionDetected").set_value(detected)
-        if not detected:
+        if detected:
+            self._recording_management.resume_recording()
+        else:
             # The hub keeps the recording open until we mark a fragment as the
             # last one, so the end of the motion is what ends the clip.
             self._recording_management.stop_recording()
@@ -574,10 +576,9 @@ class HomeKitSecureVideoCameraAccessory(Camera):
             resolutions=resolutions,
             video_profiles=tuple(profile[0] for profile in VIDEO_PROFILES),
             video_levels=tuple(level[0] for level in VIDEO_LEVELS),
-            audio_codecs=(
-                HomeKitSecureVideoRecordingAudioCodec.AAC_LC,
-                HomeKitSecureVideoRecordingAudioCodec.AAC_ELD,
-            ),
+            # The native aac encoder cannot produce AAC-ELD; offering it lets
+            # the hub select a codec every recorder start would die on.
+            audio_codecs=(HomeKitSecureVideoRecordingAudioCodec.AAC_LC,),
             audio_sample_rates=(HomeKitSecureVideoAudioSampleRate.KHZ_32,),
         )
 

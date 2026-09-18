@@ -149,3 +149,21 @@ def test_every_issue_is_translated(issue):
         ).read_text(encoding="utf-8")
     )
     assert issue in translations["issues"]
+
+
+def test_an_oversized_source_is_measured_against_the_capped_offer(hass, config_entry):
+    hass.config_entries.async_update_entry(
+        config_entry,
+        options={"reencode": False, "max_width": 1280, "max_height": 720},
+    )
+
+    async_review_camera_source(
+        hass,
+        config_entry,
+        _profile(video_codec="h264", width=1920, height=1080),
+        has_stream_source=True,
+    )
+
+    raised = _issue(hass, config_entry, ISSUE_OVERSIZED_SOURCE)
+    assert raised is not None
+    assert raised.translation_placeholders["offered_resolution"] == "1280x720"

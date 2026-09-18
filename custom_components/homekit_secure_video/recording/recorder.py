@@ -8,6 +8,7 @@ from collections import deque
 from typing import TYPE_CHECKING
 
 from ..const import LOGGER
+from ..exceptions import HomeKitSecureVideoRecordingError
 from ..redaction import redact_credentials
 from .fragmented_mp4 import read_segments
 from .prebuffer import HomeKitSecureVideoPrebuffer
@@ -175,14 +176,19 @@ class HomeKitSecureVideoRecorder:
         if process.stdout is None:
             return
 
-        async for is_initialization, payload in read_segments(process.stdout):
-            if is_initialization:
-                self._initialization_segment = payload
-                continue
+        try:
+            async for is_initialization, payload in read_segments(process.stdout):
+                if is_initialization:
+                    self._initialization_segment = payload
+                    continue
 
-            if self._prebuffer is not None:
-                self._prebuffer.append(payload)
-            self._publish(payload)
+                if self._prebuffer is not None:
+                    self._prebuffer.append(payload)
+                self._publish(payload)
+        except HomeKitSecureVideoRecordingError as exception:
+            # Left to unwind the task, this would keep ffmpeg alive with
+            # nobody draining its output and `is_running` answering True.
+            LOGGER.warning("The recorder's output could not be read: %s", exception)
 
         # Reaching here means ffmpeg ended by itself — a camera reboot or a
         # dropped RTSP session — and the segment it left behind describes a

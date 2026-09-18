@@ -351,3 +351,69 @@ async def test_a_camera_that_never_answered_the_probe_is_published_as_unknown(
 
     accessory_class = module.HomeKitSecureVideoCameraAccessory
     assert accessory_class.call_args.args[5] == EMPTY_PROFILE
+
+
+async def test_a_start_that_fails_at_the_hap_bind_stops_the_accessory(
+    hass,
+    config_entry,
+    mock_accessory_driver,
+    mock_camera_accessory,
+    mock_data_stream_server,
+):
+    from homeassistant.config_entries import ConfigEntryState
+
+    mock_accessory_driver.async_start = AsyncMock(side_effect=OSError("in use"))
+    mock_camera_accessory.stop = AsyncMock()
+
+    await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert config_entry.state == ConfigEntryState.SETUP_RETRY
+    mock_camera_accessory.stop.assert_awaited_once()
+    mock_accessory_driver.async_stop.assert_not_awaited()
+    assert mock_accessory_driver.http_server.async_stop.call_count == 1
+
+
+async def test_a_start_that_fails_before_the_socket_leaves_it_alone(
+    hass,
+    config_entry,
+    mock_accessory_driver,
+    mock_camera_accessory,
+    mock_data_stream_server,
+):
+    mock_accessory_driver.async_start = AsyncMock(side_effect=OSError("in use"))
+    mock_accessory_driver.http_server.server = None
+    mock_camera_accessory.stop = AsyncMock()
+
+    await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert mock_accessory_driver.http_server.async_stop.call_count == 0
+
+
+async def test_stopping_notifies_the_status_listeners(hass, setup_integration):
+    manager = setup_integration.runtime_data.accessory_manager
+    calls: list[int] = []
+    manager.async_add_status_listener(lambda: calls.append(1))
+
+    await manager.async_stop()
+
+    assert calls == [1]
+    assert manager.status["paired"] is False
+
+
+async def test_a_reset_pairing_that_cannot_republish_hands_over_to_a_reload(
+    hass, setup_integration, mock_accessory_driver
+):
+    from homeassistant.exceptions import HomeAssistantError
+
+    manager = setup_integration.runtime_data.accessory_manager
+    mock_accessory_driver.async_start = AsyncMock(side_effect=OSError("in use"))
+
+    with (
+        patch.object(hass.config_entries, "async_schedule_reload") as reload,
+        pytest.raises(HomeAssistantError),
+    ):
+        await manager.async_reset_pairing()
+
+    reload.assert_called_once_with(setup_integration.entry_id)
