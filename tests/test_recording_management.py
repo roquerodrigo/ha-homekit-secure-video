@@ -582,3 +582,25 @@ def test_the_operating_mode_is_restored_without_firing_the_callback():
     assert not service.are_event_snapshots_active
     assert not service.is_camera_active
     assert service.are_periodic_snapshots_active
+
+
+async def test_a_motion_that_ends_before_the_hub_opens_still_ends_the_clip(management):
+    _enable(management)
+    management.stop_recording()
+
+    management._handle_open(MagicMock(), _open_message())
+
+    assert management.is_recording_in_flight
+    assert management._session._stop.is_set()
+    management.abort_recording()
+
+
+async def test_motion_starting_again_forgets_an_earlier_end(management):
+    _enable(management)
+    management.stop_recording()
+    management.resume_recording()
+
+    management._handle_open(MagicMock(), _open_message())
+
+    assert not management._session._stop.is_set()
+    management.abort_recording()

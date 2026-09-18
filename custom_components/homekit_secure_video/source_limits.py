@@ -67,8 +67,8 @@ def _within(
 ) -> tuple[Resolution, ...]:
     """Return the catalogue entries that fit, carrying the given frame rate."""
     return tuple(
-        (width, height, frame_rate)
-        for width, height, _ in catalogue
+        (width, height, min(fps, frame_rate))
+        for width, height, fps in catalogue
         if width <= max_width and height <= max_height
     )
 

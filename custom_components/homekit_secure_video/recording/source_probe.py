@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from ..data import HomeKitSecureVideoSourceProfile
 
 PROBE_TIMEOUT_SECONDS = 15
+KILL_TIMEOUT_SECONDS = 5
 
 EMPTY_PROFILE: HomeKitSecureVideoSourceProfile = {
     "video_codec": None,
@@ -81,7 +82,13 @@ async def async_probe_source(
         LOGGER.warning("Probing the camera timed out")
         with contextlib.suppress(ProcessLookupError):
             process.kill()
-        await process.wait()
+        # This runs under the recorder lock; a lost exit notification must
+        # not hold it for good.
+        try:
+            async with asyncio.timeout(KILL_TIMEOUT_SECONDS):
+                await process.wait()
+        except TimeoutError:
+            LOGGER.warning("Gave up waiting for ffprobe %s to exit", process.pid)
         return dict(EMPTY_PROFILE)  # type: ignore[return-value]
 
     return _parse(stdout)

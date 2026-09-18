@@ -97,6 +97,7 @@ class HomeKitSecureVideoRecordingManagementService:
         self._selected_value: str | None = None
         self._last_recording: datetime | None = None
         self._session: HomeKitSecureVideoRecordingSession | None = None
+        self._stop_requested = False
         self._recordings_started = 0
         self._last_statistics: HomeKitSecureVideoRecordingStatistics | None = None
         self.service = self._build_service()
@@ -207,9 +208,21 @@ class HomeKitSecureVideoRecordingManagementService:
         )
 
     def stop_recording(self) -> None:
-        """Ask the recording in flight, if any, to finish."""
-        if self._session is not None:
+        """
+        Ask the recording in flight to finish, or the next one to open.
+
+        The hub opens its recording some time after the trigger fires, and a
+        trigger short enough to clear before then would otherwise leave that
+        recording with no end at all, running to the ceiling.
+        """
+        if self._session is not None and not self._session.is_closed:
             self._session.request_stop()
+        else:
+            self._stop_requested = True
+
+    def resume_recording(self) -> None:
+        """Let the next recording run: the trigger is on again."""
+        self._stop_requested = False
 
     def abort_recording(
         self,
@@ -400,6 +413,9 @@ class HomeKitSecureVideoRecordingManagementService:
         )
         self._session.start()
         self._recordings_started += 1
+        if self._stop_requested:
+            self._stop_requested = False
+            self._session.request_stop()
 
     def _rejection_for(
         self, message: HomeKitSecureVideoDataStreamMessage

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from .live_stream_command import HomeKitSecureVideoLiveStreamCommand
 
 TERMINATE_TIMEOUT_SECONDS = 5
+KILL_TIMEOUT_SECONDS = 5
 STDERR_BUFFER_LIMIT = 64 * 1024
 
 
@@ -122,7 +123,14 @@ class HomeKitSecureVideoLiveStreamSession:
             LOGGER.warning("ffmpeg ignored terminate; killing it")
             with contextlib.suppress(ProcessLookupError):
                 process.kill()
-            await process.wait()
+            try:
+                async with asyncio.timeout(KILL_TIMEOUT_SECONDS):
+                    await process.wait()
+            except TimeoutError:
+                LOGGER.warning(
+                    "Gave up waiting for ffmpeg %s to exit after killing it",
+                    process.pid,
+                )
 
 
 async def _cancel(task: asyncio.Task[None] | None) -> None:

@@ -330,3 +330,46 @@ async def test_a_session_drains_what_ffmpeg_writes_to_stderr(command):
             await asyncio.sleep(0)
 
     assert process.stderr.readline.await_count == len(lines)
+
+
+@pytest.mark.parametrize(
+    ("packet_time", "frame_duration"),
+    [(20, "20"), (30, "20"), (40, "40"), (60, "60")],
+)
+def test_audio_frame_duration_is_one_libopus_accepts(packet_time, frame_duration):
+    """libopus refuses the 30 ms packet time HomeKit may ask for."""
+    command = HomeKitSecureVideoLiveStreamCommand(
+        input_source="rtsp://camera",
+        request={**AUDIO_REQUEST, "a_packet_time": packet_time},
+        reencode=True,
+        source_has_audio=True,
+    )
+    arguments = command.arguments
+
+    assert arguments[arguments.index("-frame_duration") + 1] == frame_duration
+
+
+async def test_session_does_not_hang_on_a_process_that_never_exits(command):
+    from custom_components.homekit_secure_video.streaming import live_stream_session
+
+    process = _ffmpeg_process()
+    calls = 0
+
+    async def wait() -> int:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise TimeoutError
+        await asyncio.Event().wait()
+        return 0
+
+    process.wait = AsyncMock(side_effect=wait)
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=process)):
+        session = HomeKitSecureVideoLiveStreamSession("ffmpeg", command)
+        await session.async_start()
+
+    with patch.object(live_stream_session, "KILL_TIMEOUT_SECONDS", 0):
+        await asyncio.wait_for(session.async_stop(), 5)
+
+    assert process.kill.call_count == 1
+    assert not session.is_running

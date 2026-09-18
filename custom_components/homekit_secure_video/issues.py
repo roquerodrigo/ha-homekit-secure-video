@@ -47,6 +47,10 @@ def async_review_camera_source(
     width = source_profile.get("width")
     height = source_profile.get("height")
     largest_width, largest_height, _ = RECORDING_RESOLUTIONS[-1]
+    # The caps narrow what is offered below the catalogue; a copied stream
+    # larger than the offer is what HomeKit was not asked to accept.
+    largest_width = min(largest_width, int(options.get("max_width", largest_width)))
+    largest_height = min(largest_height, int(options.get("max_height", largest_height)))
 
     _async_apply(
         hass,

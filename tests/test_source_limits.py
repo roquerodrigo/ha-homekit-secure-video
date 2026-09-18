@@ -80,3 +80,15 @@ def test_the_floor_is_what_a_slower_camera_gets_raised_to():
     )
 
     assert limited_frame_rate({"frame_rate": 10.0}, 30) < MIN_ADVERTISED_FPS
+
+
+def test_an_entry_slower_than_the_frame_rate_keeps_its_own():
+    """The Apple Watch entry is 15 fps in the catalogue and must stay so."""
+    from custom_components.homekit_secure_video.const import SUPPORTED_RESOLUTIONS
+
+    offered = limited_resolutions(
+        SUPPORTED_RESOLUTIONS, _source(1920, 1080, 30.0), 3840, 2160, 30
+    )
+
+    assert (320, 240, 15) in offered
+    assert (1920, 1080, 30) in offered

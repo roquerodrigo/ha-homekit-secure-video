@@ -85,7 +85,12 @@ def _camera_schema(
         ): selector.BooleanSelector(),
     }
     if include_reencode:
-        fields[vol.Optional(CONF_REENCODE, default=DEFAULT_REENCODE)] = (
+        reencode_default = (
+            default_config.get(CONF_REENCODE, DEFAULT_REENCODE)
+            if default_config
+            else DEFAULT_REENCODE
+        )
+        fields[vol.Optional(CONF_REENCODE, default=reencode_default)] = (
             selector.BooleanSelector()
         )
     if streaming_options is not None:

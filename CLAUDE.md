@@ -45,13 +45,17 @@ The accessory is local and pushes its own changes, so the coordinator runs with 
 
 ### Pairing state on disk
 
-`pyhap` persists the accessory's key material itself. The file lives at `.storage/homekit_secure_video.<entry_id>.state`, mirroring what the core `homekit` integration does. `async_remove_entry` deletes it, and the "Reset pairing" button stops the accessory, deletes the file and starts it again, which regenerates the pairing code.
+`pyhap` persists the accessory's key material itself. The file lives at `.storage/homekit_secure_video.<entry_id>.state`, mirroring what the core `homekit` integration does. `async_remove_entry` deletes it, and the "Reset pairing" button stops the accessory, deletes the file and starts it again, which drops every paired controller. The pairing code and setup id are *not* regenerated — they are pinned on the config entry (see below), so the code and QR code the entities show stay valid for pairing again.
 
 ### Nothing acquired before a failure survives it
 
 `async_start` takes a listening socket for the data stream and then the reserved HAP port, and the step between them — probing the configured camera — raises `ConfigEntryNotReady` whenever the camera's own integration has not come up yet, which on a restart is routine. **Home Assistant does not call `async_unload_entry` for an entry that never reached `LOADED`**, so nothing releases what a failed attempt took: every retry leaked another listening socket, and the reserved port stayed held until a restart. Two things keep that from coming back — `async_start` stops the manager before re-raising, and `async_setup_entry` registers `entry.async_on_unload(accessory_manager.async_stop)` *before* starting, which is the hook Home Assistant runs in the failed-setup path.
 
 The same shape applies inside the accessory. Recorder work runs on tasks the accessory keeps and cancels in `stop()`, and a stopped accessory starts no recorder: resolving the stream source and probing its audio are both long awaits that sit *before* ffmpeg is spawned, so a task suspended there would otherwise resume after the accessory was dropped and spawn a process nothing owns.
+
+### A driver that never started is taken apart by hand
+
+pyhap's `AccessoryDriver.async_stop` assumes a driver that started: it unregisters an mDNS service that was never registered and cancels a connection cleanup that was never scheduled, so calling it after `async_start` failed (port in use, say) raises `AttributeError` and replaces the `OSError` that `async_setup_entry` maps to `ConfigEntryNotReady`. The manager therefore records whether the driver started; when it did not, `async_stop` closes the HAP socket only if it was opened and stops the accessory directly — which matters because restoring the recording state starts the recorder before the driver is published. `async_stop` also fires the status listeners, so entities never keep showing a published accessory that is gone.
 
 ### What runs in the executor
 
@@ -84,7 +88,7 @@ The `data/` package holds one TypedDict/dataclass per file. `data/__init__.py` d
 
 Live audio is a **second output of the same ffmpeg process**, on the port and SRTP key HomeKit negotiates separately from video, encoded with `libopus` at the negotiated sample rate, bitrate, channel count and packet time. It is emitted only when the probed source actually has an audio track and HomeKit picked Opus — mapping a track that is not there makes ffmpeg refuse to start.
 
-**Only Opus is advertised.** The Home Assistant ffmpeg build has no `libfdk_aac`, and the native `aac` encoder cannot produce AAC-ELD, so offering AAC-ELD would let HomeKit negotiate a codec this integration cannot encode.
+**Only Opus is advertised.** The Home Assistant ffmpeg build has no `libfdk_aac`, and the native `aac` encoder cannot produce AAC-ELD, so offering AAC-ELD would let HomeKit negotiate a codec this integration cannot encode. The same applies to recording: `SupportedAudioRecordingConfiguration` offers AAC-LC alone, because a hub that selected AAC-ELD would have every recorder start die on `Profile not supported`. And libopus refuses the 30 ms packet time HomeKit may negotiate for live audio (it takes 20, 40 or 60), so the live command snaps it to the largest accepted value below it — a rejected frame duration kills the whole live ffmpeg, video included.
 
 ### HomeKit Data Stream
 
@@ -117,6 +121,8 @@ Two things that will bite whoever touches this:
 **A recorder that cannot keep up with real time delivers clips the hub throws away.** ffmpeg has to produce a fragment of negotiated footage in less than the wall-clock time that footage covers; below 1x, the media it emits falls further behind the hub's clock with every fragment, and the hub silently keeps none of them. Nothing about this looks wrong from here: the fragments are well formed, the keyframes land on the boundaries, the delivery completes, and no error is logged or shown in the Home app. Measure it before suspecting anything else — time the gap between `moof` boxes and compare it with `fragment_milliseconds`. The cause is normally an over-sized re-encode: one camera sending 640x480 at 10 fps, upscaled to the 1080p at 30 fps HomeKit had negotiated, ran at 0.70x and never produced a single stored recording, while two cameras re-encoding from larger sources on the same host ran at 0.92x and recorded fine. Capping that entry's resolution and frame rate is what fixes it — the caps in `streaming_options.py` narrow what is advertised, so HomeKit negotiates something the host can actually sustain.
 
 **A clip must end on a fragment that carries footage.** The `endOfStream` marker is a flag on a `dataSend/data` event, so it needs a fragment to ride on — and the hub discards the whole recording, answering `UNEXPECTED_FAILURE` within milliseconds, when that flag arrives on a packet whose `dataTotalSize` is zero. Delivery therefore always holds one fragment back: the recording can only be ended on a fragment already in hand, never at the moment the next one fails to arrive. Getting this wrong fails every single recording while leaving the negotiation, the transport and the ffmpeg side looking perfectly healthy — the log shows fragments going out, the Home app shows no error, and the clip simply never appears.
+
+**The end of the motion can arrive before the hub opens the recording.** A trigger pulse shorter than the hub's open latency used to clear against no session at all, so the clip that followed had no end and ran to the ceiling. `stop_recording` therefore remembers the request when there is nothing in flight and applies it to the next `dataSend/open`; the trigger going on again withdraws it.
 
 **Nothing guarantees the trigger will ever clear.** `always_on_motion` never lowers `MotionDetected` at all, and a linked sensor can stay on longer than `MAX_RECORDING_SECONDS`, so the ceiling and the fragment timeout are ordinary endings, not failure paths. Both have to produce a well-formed end of clip, or continuous recording never delivers anything. The hub does not acknowledge a clip ended by the ceiling — it closes the stream after this side does and opens the next one — so that missing acknowledgement is logged at DEBUG; a clip that ended any other way and was not acknowledged still warns.
 

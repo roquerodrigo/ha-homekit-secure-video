@@ -34,6 +34,9 @@ AUDIO_ENCODER = "libopus"
 DEFAULT_AUDIO_SAMPLE_RATE_KHZ = 24
 DEFAULT_AUDIO_BITRATE_KBPS = 24
 DEFAULT_AUDIO_PACKET_MILLISECONDS = 20
+# HomeKit may ask for a 30 ms packet time, which libopus refuses outright; the
+# closest frame it does accept, without exceeding what was asked, is used.
+OPUS_FRAME_DURATIONS_MILLISECONDS: Final = (20, 40, 60)
 DEFAULT_AUDIO_PAYLOAD_TYPE = 110
 DEFAULT_AUDIO_CHANNELS = 1
 
@@ -133,7 +136,7 @@ class HomeKitSecureVideoLiveStreamCommand:
             "-b:a",
             f"{bitrate}k",
             "-frame_duration",
-            str(packet_time),
+            str(_opus_frame_duration(packet_time)),
             "-payload_type",
             str(payload_type),
             "-ssrc",
@@ -265,3 +268,13 @@ class HomeKitSecureVideoLiveStreamCommand:
             f"srtp://{address}:{port}?rtcpport={port}"
             f"&localrtpport={port}&pkt_size={PACKET_SIZE}"
         )
+
+
+def _opus_frame_duration(packet_time: int) -> int:
+    """Return the libopus frame duration that fits HomeKit's packet time."""
+    fitting = [
+        duration
+        for duration in OPUS_FRAME_DURATIONS_MILLISECONDS
+        if duration <= packet_time
+    ]
+    return max(fitting) if fitting else OPUS_FRAME_DURATIONS_MILLISECONDS[0]

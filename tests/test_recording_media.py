@@ -182,17 +182,22 @@ def test_recording_command_fragments_on_keyframes():
     assert arguments[arguments.index("-frag_duration") + 1] == "4000000"
 
 
-def test_recording_command_uses_aac_eld_when_negotiated():
-    configuration = HomeKitSecureVideoSelectedConfiguration.from_tlv(
-        _selected_tlv(audio_codec=1)
-    )
-    command = HomeKitSecureVideoRecordingCommand(
-        input_source="rtsp://camera/stream",
-        configuration=configuration,
-        source_has_audio=False,
+def test_recording_command_never_asks_for_aac_eld():
+    """The native aac encoder refuses aac_eld; every recorder start would die."""
+    from custom_components.homekit_secure_video.recording import (
+        HomeKitSecureVideoRecordingAudioCodec,
     )
 
-    assert command.arguments[command.arguments.index("-profile:a") + 1] == "aac_eld"
+    configuration = HomeKitSecureVideoSelectedConfiguration.from_tlv(
+        _selected_tlv(audio_codec=int(HomeKitSecureVideoRecordingAudioCodec.AAC_ELD))
+    )
+    command = HomeKitSecureVideoRecordingCommand(
+        input_source="rtsp://camera",
+        configuration=configuration,
+        source_has_audio=True,
+    )
+
+    assert command.arguments[command.arguments.index("-profile:a") + 1] == "aac_low"
 
 
 PROBE_OUTPUT = json.dumps(
@@ -610,3 +615,47 @@ async def test_a_recorder_stops_even_when_ffmpeg_never_reports_its_exit(recorder
 async def _never() -> None:
     """Stand in for a process whose exit is never reported."""
     await asyncio.Event().wait()
+
+
+async def test_a_recorder_whose_output_cannot_be_read_still_ends_its_run(
+    recorder, caplog
+):
+    """A parser error must not leave ffmpeg alive with nobody reading it."""
+    stream = _box(b"ftyp") + _box(b"moov") + struct.pack(">I", 4) + b"moof"
+    command = HomeKitSecureVideoRecordingCommand(
+        input_source="rtsp://camera",
+        configuration=CONFIGURATION,
+        source_has_audio=False,
+    )
+    process = _process(stream, still_running=False)
+    ended: list[bool] = []
+    recorder.set_stream_ended_callback(lambda: ended.append(True))
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=process)):
+        await recorder.async_start(command, CONFIGURATION)
+        async with asyncio.timeout(5):
+            while not ended:
+                await asyncio.sleep(0)
+
+    assert process.terminate.call_count == 1
+    assert not recorder.is_running
+    assert "could not be read" in caplog.text
+    await recorder.async_stop()
+
+
+async def test_probe_does_not_hang_on_a_process_that_never_exits():
+    from custom_components.homekit_secure_video.recording import source_probe
+
+    process = MagicMock()
+    process.communicate = AsyncMock(side_effect=TimeoutError)
+    process.wait = AsyncMock(side_effect=_never)
+    with (
+        patch("asyncio.create_subprocess_exec", AsyncMock(return_value=process)),
+        patch.object(source_probe, "KILL_TIMEOUT_SECONDS", 0),
+    ):
+        profile = await asyncio.wait_for(
+            async_probe_source("/usr/bin/ffmpeg", "rtsp://camera"), 5
+        )
+
+    assert profile["video_codec"] is None
+    assert process.kill.call_count == 1
