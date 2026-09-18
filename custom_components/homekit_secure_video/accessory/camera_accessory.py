@@ -70,6 +70,7 @@ if TYPE_CHECKING:
         HomeKitSecureVideoConfigEntry,
         HomeKitSecureVideoOptionsData,
         HomeKitSecureVideoRecordingDiagnostics,
+        HomeKitSecureVideoRecordingState,
         HomeKitSecureVideoSourceProfile,
         HomeKitSecureVideoStreamRequest,
         HomeKitSecureVideoStreamSessionInfo,
@@ -192,6 +193,7 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         self._stream_audio = options.get("stream_audio", DEFAULT_STREAM_AUDIO)
         self._stream_sessions: dict[str, HomeKitSecureVideoLiveStreamSession] = {}
         self._status_changed: Callable[[], None] | None = None
+        self._recording_state_changed: Callable[[], None] | None = None
         self._recorder_health_changed: Callable[[], None] | None = None
         self._recorder_unhealthy = False
         self._source_probe_failed_at: float | None = None
@@ -240,7 +242,7 @@ class HomeKitSecureVideoCameraAccessory(Camera):
             tuple[HomeKitSecureVideoSelectedConfiguration, bool] | None
         ) = None
         self._operating_mode = HomeKitSecureVideoCameraOperatingModeService(
-            self._handle_camera_active_changed
+            self._handle_operating_mode_changed
         )
         self._recording_management = HomeKitSecureVideoRecordingManagementService(
             self._build_supported_configuration(options),
@@ -291,6 +293,42 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         return self._recording_management.diagnostics
 
     @property
+    def recording_state(self) -> HomeKitSecureVideoRecordingState:
+        """Return what HomeKit negotiated, in the shape kept across restarts."""
+        return {
+            "supported_configuration_fingerprint": (
+                self._recording_management.supported_configuration_fingerprint
+            ),
+            "selected_configuration": (
+                self._recording_management.selected_configuration_value
+            ),
+            "recording_active": self._recording_management.is_recording_enabled,
+            "recording_audio_active": self._recording_management.is_audio_enabled,
+            "event_snapshots_active": self._operating_mode.are_event_snapshots_active,
+            "homekit_camera_active": self._operating_mode.is_camera_active,
+            "periodic_snapshots_active": (
+                self._operating_mode.are_periodic_snapshots_active
+            ),
+        }
+
+    def restore_recording_state(self, state: HomeKitSecureVideoRecordingState) -> None:
+        """
+        Take back what HomeKit negotiated with the previous run.
+
+        The hub does not negotiate again on every connection, so the accessory
+        has to come back exactly as the hub left it — recording on, and the
+        recorder already running, when that is what it had asked for.
+        """
+        self._recording_management.restore(state)
+        self._operating_mode.restore(
+            event_snapshots_active=state["event_snapshots_active"],
+            homekit_camera_active=state["homekit_camera_active"],
+            periodic_snapshots_active=state["periodic_snapshots_active"],
+        )
+        self._async_update_motion_sensor_active()
+        self._request_recorder_sync()
+
+    @property
     def is_streaming(self) -> bool:
         """Return whether at least one live stream session is running."""
         return any(session.is_running for session in self._stream_sessions.values())
@@ -302,6 +340,12 @@ class HomeKitSecureVideoCameraAccessory(Camera):
     def set_status_changed_callback(self, callback: Callable[[], None]) -> None:
         """Register the callback fired whenever the streaming state changes."""
         self._status_changed = callback
+
+    def set_recording_state_changed_callback(
+        self, callback: Callable[[], None]
+    ) -> None:
+        """Register the callback fired whenever HomeKit changes what it negotiated."""
+        self._recording_state_changed = callback
 
     async def run(self) -> None:
         """Start reporting motion, either always on or from the linked sensor."""
@@ -714,14 +758,16 @@ class HomeKitSecureVideoCameraAccessory(Camera):
     def _handle_recording_state_changed(self) -> None:
         """Start or stop the recorder to match what HomeKit asked for."""
         self._request_recorder_sync()
+        self._notify_recording_state_changed()
         self._notify_status_changed()
 
-    def _handle_camera_active_changed(self) -> None:
+    def _handle_operating_mode_changed(self) -> None:
         """Follow HomeKit switching the camera on or off."""
         if not self._operating_mode.is_camera_active:
             self._recording_management.abort_recording()
         self._async_update_motion_sensor_active()
         self._request_recorder_sync()
+        self._notify_recording_state_changed()
         self._notify_status_changed()
 
     def _async_update_motion_sensor_active(self) -> None:
@@ -862,3 +908,8 @@ class HomeKitSecureVideoCameraAccessory(Camera):
         """Tell the manager that the streaming state changed."""
         if self._status_changed is not None:
             self._status_changed()
+
+    def _notify_recording_state_changed(self) -> None:
+        """Tell the manager that what HomeKit negotiated changed."""
+        if self._recording_state_changed is not None:
+            self._recording_state_changed()

@@ -160,3 +160,15 @@ async def test_the_pairing_code_survives_a_reload(hass, setup_integration):
     await hass.async_block_till_done()
 
     assert setup_integration.data["pairing_code"] == code
+
+
+async def test_remove_entry_forgets_the_recording_state(
+    hass, hass_storage, setup_integration
+):
+    key = f"homekit_secure_video.{setup_integration.entry_id}.recording"
+    hass_storage[key] = {"version": 1, "minor_version": 1, "key": key, "data": {}}
+
+    await hass.config_entries.async_remove(setup_integration.entry_id)
+    await hass.async_block_till_done()
+
+    assert key not in hass_storage

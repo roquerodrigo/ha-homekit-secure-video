@@ -234,3 +234,29 @@ def test_selected_configuration_rejects_an_unknown_sample_rate():
         HomeKitSecureVideoRecordingError, match="unsupported audio sample rate"
     ):
         HomeKitSecureVideoSelectedConfiguration.from_tlv(_selected_tlv(sample_rate=9))
+
+
+def test_the_fingerprint_follows_the_offer():
+    from dataclasses import replace
+
+    from custom_components.homekit_secure_video.recording import (
+        HomeKitSecureVideoAudioSampleRate,
+        HomeKitSecureVideoEventTrigger,
+        HomeKitSecureVideoRecordingAudioCodec,
+        HomeKitSecureVideoSupportedConfiguration,
+    )
+
+    supported = HomeKitSecureVideoSupportedConfiguration(
+        prebuffer_milliseconds=4000,
+        fragment_milliseconds=4000,
+        event_triggers=(HomeKitSecureVideoEventTrigger.MOTION,),
+        resolutions=((1920, 1080, 30),),
+        video_profiles=(1,),
+        video_levels=(0, 1, 2),
+        audio_codecs=(HomeKitSecureVideoRecordingAudioCodec.AAC_LC,),
+        audio_sample_rates=(HomeKitSecureVideoAudioSampleRate.KHZ_32,),
+    )
+    narrowed = replace(supported, resolutions=((1920, 1080, 15),))
+
+    assert supported.fingerprint == replace(supported).fingerprint
+    assert supported.fingerprint != narrowed.fingerprint

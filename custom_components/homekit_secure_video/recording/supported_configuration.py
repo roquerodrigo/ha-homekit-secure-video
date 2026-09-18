@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import struct
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -55,6 +56,21 @@ class HomeKitSecureVideoSupportedConfiguration:
     video_levels: tuple[int, ...]
     audio_codecs: tuple[HomeKitSecureVideoRecordingAudioCodec, ...]
     audio_sample_rates: tuple[HomeKitSecureVideoAudioSampleRate, ...]
+
+    @property
+    def fingerprint(self) -> str:
+        """
+        Return a digest of the whole offer, as advertised.
+
+        A configuration HomeKit selected is only worth keeping while the offer
+        it was selected from stands: restored against a different one it could
+        name a resolution or a frame rate no longer advertised.
+        """
+        digest = hashlib.sha256()
+        digest.update(self.camera_configuration.encode())
+        digest.update(self.video_configuration.encode())
+        digest.update(self.audio_configuration.encode())
+        return digest.hexdigest()
 
     @property
     def camera_configuration(self) -> str:

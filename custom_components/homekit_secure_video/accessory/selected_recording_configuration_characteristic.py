@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pyhap.characteristic import Characteristic
+from pyhap.characteristic import Characteristic, CharacteristicError
+
+from ..exceptions import HomeKitSecureVideoRecordingError
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -39,9 +41,17 @@ class HomeKitSecureVideoSelectedRecordingConfigurationCharacteristic(Characteris
         self._read_configuration = read_configuration
 
     def get_value(self) -> str:
-        """Return the negotiated configuration, failing when there is none."""
-        value: str = self._read_configuration()
-        return value
+        """
+        Return the negotiated configuration, failing when there is none.
+
+        HAP-python answers the read with the failure status either way; what
+        the exception type decides is whether the log gets one line or a
+        traceback for a read that is expected to fail on a fresh accessory.
+        """
+        try:
+            return self._read_configuration()
+        except HomeKitSecureVideoRecordingError as exception:
+            raise CharacteristicError(str(exception)) from exception
 
     def to_HAP(self, include_value: bool = True) -> dict[str, JsonValue]:  # noqa: FBT001, FBT002, N802 -- HAP-python's signature
         """Describe the characteristic without failing the accessory dump."""

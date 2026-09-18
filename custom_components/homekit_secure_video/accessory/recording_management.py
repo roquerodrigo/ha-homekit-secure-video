@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 
     from ..data import (
         HomeKitSecureVideoRecordingDiagnostics,
+        HomeKitSecureVideoRecordingState,
         HomeKitSecureVideoRecordingStatistics,
     )
     from ..datastream import (
@@ -135,6 +136,16 @@ class HomeKitSecureVideoRecordingManagementService:
         return self._selected
 
     @property
+    def selected_configuration_value(self) -> str | None:
+        """Return the negotiated configuration as HomeKit wrote it, if any."""
+        return self._selected_value
+
+    @property
+    def supported_configuration_fingerprint(self) -> str:
+        """Return the digest of the offer the negotiation was made against."""
+        return self._supported.fingerprint
+
+    @property
     def last_recording(self) -> datetime | None:
         """Return when the last recording finished being delivered."""
         return self._last_recording
@@ -164,6 +175,36 @@ class HomeKitSecureVideoRecordingManagementService:
     def is_recording_in_flight(self) -> bool:
         """Return whether a recording is being delivered right now."""
         return self._session is not None and not self._session.is_closed
+
+    def restore(self, state: HomeKitSecureVideoRecordingState) -> None:
+        """
+        Take back what HomeKit had negotiated before the accessory restarted.
+
+        A hub remembers the negotiation and does not repeat it on every
+        connection: one that finds recording switched on and the configuration
+        gone reads the failure, subscribes, and never writes again. The
+        configuration is only taken back while the offer it was selected from
+        still stands.
+        """
+        selected = state["selected_configuration"]
+        if selected is not None:
+            if (
+                state["supported_configuration_fingerprint"]
+                == self._supported.fingerprint
+            ):
+                if self._select(selected):
+                    LOGGER.debug(
+                        "Restored the recording configuration %s", self._selected
+                    )
+            else:
+                LOGGER.debug(
+                    "Discarding the recording configuration HomeKit selected: "
+                    "the offer has changed since"
+                )
+        self.service.get_characteristic(ACTIVE).value = int(state["recording_active"])
+        self.service.get_characteristic(RECORDING_AUDIO_ACTIVE).value = int(
+            state["recording_audio_active"]
+        )
 
     def stop_recording(self) -> None:
         """Ask the recording in flight, if any, to finish."""
@@ -295,19 +336,25 @@ class HomeKitSecureVideoRecordingManagementService:
             return
 
         LOGGER.debug("HomeKit wrote the recording configuration %s", value)
+        if not self._select(value):
+            return
+        LOGGER.debug("HomeKit selected the recording configuration %s", self._selected)
+        self._announce_state_change()
+
+    def _select(self, value: str) -> bool:
+        """Take a configuration into use, or say why it cannot be."""
         try:
-            self._selected = HomeKitSecureVideoSelectedConfiguration.from_tlv(value)
+            selected = HomeKitSecureVideoSelectedConfiguration.from_tlv(value)
         except HomeKitSecureVideoRecordingError:
             LOGGER.exception("Failed to read the selected recording configuration")
-            return
+            return False
 
+        self._selected = selected
         self._selected_value = value
         self.service.get_characteristic(
             SELECTED_CAMERA_RECORDING_CONFIGURATION
         ).value = value
-
-        LOGGER.debug("HomeKit selected the recording configuration %s", self._selected)
-        self._announce_state_change()
+        return True
 
     def _announce_state_change(self) -> None:
         """Report the change without letting a listener break the write."""

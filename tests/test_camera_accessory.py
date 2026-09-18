@@ -1165,3 +1165,93 @@ async def test_a_synchronisation_can_be_asked_for_again_once_it_ran(accessory):
     accessory._handle_recording_state_changed()
     await asyncio.gather(*tuple(accessory._recorder_tasks))
     assert accessory._recorder.async_stop.await_count == 2
+
+
+def _recording_state(accessory, **overrides):
+    from .test_recording_configuration import _selected_tlv
+
+    state = {
+        "supported_configuration_fingerprint": (
+            accessory._recording_management.supported_configuration_fingerprint
+        ),
+        "selected_configuration": _selected_tlv(),
+        "recording_active": True,
+        "recording_audio_active": True,
+        "event_snapshots_active": True,
+        "homekit_camera_active": False,
+        "periodic_snapshots_active": False,
+    }
+    state.update(overrides)
+    return state
+
+
+async def test_the_recording_state_is_what_homekit_wrote(accessory):
+    from .test_recording_configuration import _selected_tlv
+
+    _write_camera_active(accessory, 0)
+    management = accessory._recording_management.service
+    for name, value in (
+        ("Active", 1),
+        ("RecordingAudioActive", 0),
+        ("SelectedCameraRecordingConfiguration", _selected_tlv()),
+    ):
+        characteristic = management.get_characteristic(name)
+        characteristic.broker = MagicMock()
+        characteristic.client_update_value(value)
+
+    assert accessory.recording_state == {
+        "supported_configuration_fingerprint": (
+            accessory._recording_management.supported_configuration_fingerprint
+        ),
+        "selected_configuration": _selected_tlv(),
+        "recording_active": True,
+        "recording_audio_active": False,
+        "event_snapshots_active": True,
+        "homekit_camera_active": False,
+        "periodic_snapshots_active": True,
+    }
+
+
+async def test_every_homekit_write_reports_the_recording_state(accessory):
+    changes: list[bool] = []
+    accessory.set_recording_state_changed_callback(lambda: changes.append(True))
+
+    with patch.object(accessory, "_request_recorder_sync"):
+        _write_camera_active(accessory, 0)
+        characteristic = accessory._recording_management.service.get_characteristic(
+            "Active"
+        )
+        characteristic.broker = MagicMock()
+        characteristic.client_update_value(1)
+
+    assert changes == [True, True]
+
+
+async def test_restoring_the_recording_state_starts_the_recorder(hass, accessory):
+    changes: list[bool] = []
+    accessory.set_recording_state_changed_callback(lambda: changes.append(True))
+
+    with patch.object(accessory, "_request_recorder_sync") as sync:
+        accessory.restore_recording_state(
+            _recording_state(accessory, homekit_camera_active=True)
+        )
+
+    sync.assert_called_once()
+    assert changes == []
+    assert accessory.homekit_camera_mode == "stream_and_record"
+    assert accessory._recording_management.selected_configuration.width == 1920
+    assert (
+        accessory._recording_management.service.get_characteristic(
+            "SelectedCameraRecordingConfiguration"
+        ).get_value()
+        == _recording_state(accessory)["selected_configuration"]
+    )
+
+
+async def test_restoring_a_switched_off_camera_mirrors_it_on_the_sensor(accessory):
+    with patch.object(accessory, "_request_recorder_sync"):
+        accessory.restore_recording_state(_recording_state(accessory))
+
+    assert accessory.homekit_camera_mode == "off"
+    motion = accessory.get_service("MotionSensor")
+    assert motion.get_characteristic("StatusActive").value is False
