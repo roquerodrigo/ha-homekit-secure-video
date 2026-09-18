@@ -329,15 +329,14 @@ def test_a_changed_configuration_is_still_announced(announced):
 
 
 def test_reading_the_configuration_before_one_is_chosen_fails(management):
-    from custom_components.homekit_secure_video.exceptions import (
-        HomeKitSecureVideoRecordingError,
-    )
+    """A one-line error in HAP-python's log, not a traceback: it is expected."""
+    from pyhap.characteristic import CharacteristicError
 
     characteristic = management.service.get_characteristic(
         "SelectedCameraRecordingConfiguration"
     )
 
-    with pytest.raises(HomeKitSecureVideoRecordingError):
+    with pytest.raises(CharacteristicError):
         characteristic.get_value()
 
 
@@ -356,11 +355,9 @@ def test_a_rejected_configuration_is_not_readable(management):
         "SelectedCameraRecordingConfiguration"
     )
 
-    from custom_components.homekit_secure_video.exceptions import (
-        HomeKitSecureVideoRecordingError,
-    )
+    from pyhap.characteristic import CharacteristicError
 
-    with pytest.raises(HomeKitSecureVideoRecordingError):
+    with pytest.raises(CharacteristicError):
         characteristic.get_value()
 
 
@@ -495,3 +492,93 @@ async def test_an_initialization_segment_alone_is_not_a_recording(management):
     management.abort_recording()
 
     assert management.last_recording is None
+
+
+def _state(**overrides):
+    state = {
+        "supported_configuration_fingerprint": SUPPORTED.fingerprint,
+        "selected_configuration": _selected_tlv(),
+        "recording_active": True,
+        "recording_audio_active": False,
+        "event_snapshots_active": True,
+        "homekit_camera_active": True,
+        "periodic_snapshots_active": False,
+    }
+    state.update(overrides)
+    return state
+
+
+def test_restore_takes_back_the_negotiation(management):
+    management.restore(_state())
+
+    assert management.selected_configuration.width == 1920
+    assert management.selected_configuration_value == _selected_tlv()
+    assert management.is_recording_enabled
+    assert not management.is_audio_enabled
+    assert (
+        management.service.get_characteristic(
+            "SelectedCameraRecordingConfiguration"
+        ).get_value()
+        == _selected_tlv()
+    )
+
+
+def test_restore_discards_a_configuration_selected_from_another_offer(management):
+    management.restore(_state(supported_configuration_fingerprint="stale"))
+
+    assert management.selected_configuration is None
+    assert management.is_recording_enabled
+
+
+def test_restore_without_a_selection_only_restores_the_switches(management):
+    management.restore(_state(selected_configuration=None, recording_active=False))
+
+    assert management.selected_configuration is None
+    assert not management.is_recording_enabled
+
+
+def test_restore_drops_a_configuration_it_cannot_read(management):
+    management.restore(_state(selected_configuration=_selected_tlv(audio_codec=9)))
+
+    assert management.selected_configuration is None
+    assert management.selected_configuration_value is None
+
+
+def test_restore_announces_nothing(announced):
+    management, changes = announced
+
+    management.restore(_state())
+
+    assert changes == []
+
+
+def test_the_fingerprint_is_the_one_of_the_offer(management):
+    assert management.supported_configuration_fingerprint == SUPPORTED.fingerprint
+
+
+def test_every_operating_mode_switch_fires_the_callback():
+    calls: list[bool] = []
+    service = HomeKitSecureVideoCameraOperatingModeService(lambda: calls.append(True))
+
+    _write(service.service, "EventSnapshotsActive", 0)
+    _write(service.service, "PeriodicSnapshotsActive", 0)
+
+    assert calls == [True, True]
+    assert not service.are_event_snapshots_active
+    assert not service.are_periodic_snapshots_active
+
+
+def test_the_operating_mode_is_restored_without_firing_the_callback():
+    calls: list[bool] = []
+    service = HomeKitSecureVideoCameraOperatingModeService(lambda: calls.append(True))
+
+    service.restore(
+        event_snapshots_active=False,
+        homekit_camera_active=False,
+        periodic_snapshots_active=True,
+    )
+
+    assert calls == []
+    assert not service.are_event_snapshots_active
+    assert not service.is_camera_active
+    assert service.are_periodic_snapshots_active

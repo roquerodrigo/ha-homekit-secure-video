@@ -38,9 +38,9 @@ class HomeKitSecureVideoCameraOperatingModeService:
     torn down when it flips.
     """
 
-    def __init__(self, camera_active_changed: Callable[[], None]) -> None:
+    def __init__(self, mode_changed: Callable[[], None]) -> None:
         """Initialize the service with the callback fired on every mode change."""
-        self._camera_active_changed = camera_active_changed
+        self._mode_changed = mode_changed
         self.service = self._build_service()
 
     @property
@@ -52,6 +52,26 @@ class HomeKitSecureVideoCameraOperatingModeService:
     def are_event_snapshots_active(self) -> bool:
         """Return whether HomeKit wants a snapshot with each event."""
         return bool(self.service.get_characteristic(EVENT_SNAPSHOTS_ACTIVE).value)
+
+    @property
+    def are_periodic_snapshots_active(self) -> bool:
+        """Return whether HomeKit wants the periodic snapshots it displays."""
+        return bool(self.service.get_characteristic(PERIODIC_SNAPSHOTS_ACTIVE).value)
+
+    def restore(
+        self,
+        *,
+        event_snapshots_active: bool,
+        homekit_camera_active: bool,
+        periodic_snapshots_active: bool,
+    ) -> None:
+        """Take back the mode HomeKit had put the camera in before a restart."""
+        for name, active in (
+            (EVENT_SNAPSHOTS_ACTIVE, event_snapshots_active),
+            (HOMEKIT_CAMERA_ACTIVE, homekit_camera_active),
+            (PERIODIC_SNAPSHOTS_ACTIVE, periodic_snapshots_active),
+        ):
+            self.service.get_characteristic(name).value = int(active)
 
     def _build_service(self) -> Service:
         """Build the service with the three characteristics HomeKit requires."""
@@ -65,6 +85,7 @@ class HomeKitSecureVideoCameraOperatingModeService:
                 display_name, type_id, dict(_ACTIVE_PROPERTIES)
             )
             characteristic.value = 1
+            characteristic.setter_callback = self._handle_mode_write
             service.add_characteristic(characteristic)
 
         # Drives the camera's status light. Working Secure Video cameras
@@ -77,13 +98,9 @@ class HomeKitSecureVideoCameraOperatingModeService:
         )
         indicator.value = True
         service.add_characteristic(indicator)
-
-        service.get_characteristic(
-            HOMEKIT_CAMERA_ACTIVE
-        ).setter_callback = self._handle_camera_active_write
         return service
 
-    def _handle_camera_active_write(self, value: int) -> None:  # noqa: ARG002 -- the new value is read back from the characteristic
+    def _handle_mode_write(self, value: int) -> None:  # noqa: ARG002 -- the new value is read back from the characteristic
         """
         Report every change, in both directions.
 
@@ -91,4 +108,4 @@ class HomeKitSecureVideoCameraOperatingModeService:
         derived from it — the linked sensor's StatusActive above all — stuck in
         the off state, and HomeKit then refuses to switch the camera back on.
         """
-        self._camera_active_changed()
+        self._mode_changed()

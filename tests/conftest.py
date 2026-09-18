@@ -170,6 +170,25 @@ async def setup_integration(
 
 
 @pytest.fixture
+def setup_integration_factory(
+    hass,
+    config_entry,
+    camera_state,
+    mock_accessory_driver,
+    mock_camera_accessory,
+    mock_data_stream_server,
+):
+    """Set the entry up on demand, after a test has prepared the storage."""
+
+    async def factory():
+        await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+        return mock_camera_accessory
+
+    return factory
+
+
+@pytest.fixture
 def free_ports():
     with patch(
         "custom_components.homekit_secure_video.config_flow._is_port_free",

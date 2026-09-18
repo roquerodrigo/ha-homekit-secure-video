@@ -101,9 +101,10 @@ async def async_remove_entry(
     hass: HomeAssistant,
     entry: HomeKitSecureVideoConfigEntry,
 ) -> None:
-    """Delete the persisted HomeKit pairing state of a removed entry."""
+    """Delete the persisted HomeKit pairing and recording state of a removed entry."""
     accessory_manager = HomeKitSecureVideoAccessoryManager(hass, entry)
     await hass.async_add_executor_job(accessory_manager.remove_persist_file)
+    await accessory_manager.async_remove_recording_state()
 
 
 async def async_remove_config_entry_device(

@@ -233,3 +233,67 @@ async def test_a_recorder_that_keeps_failing_becomes_a_repair_issue(
     report_health()
 
     assert registry.async_get_issue(DOMAIN, issue_id) is None
+
+
+def _stored_state(entry_id):
+    return {
+        "version": 1,
+        "minor_version": 1,
+        "key": f"homekit_secure_video.{entry_id}.recording",
+        "data": {
+            "supported_configuration_fingerprint": "offer",
+            "selected_configuration": "AQ==",
+            "recording_active": True,
+            "recording_audio_active": True,
+            "event_snapshots_active": True,
+            "homekit_camera_active": True,
+            "periodic_snapshots_active": True,
+        },
+    }
+
+
+async def test_the_recording_state_is_restored_on_start(
+    hass, hass_storage, config_entry, setup_integration_factory
+):
+    hass_storage[f"homekit_secure_video.{config_entry.entry_id}.recording"] = (
+        _stored_state(config_entry.entry_id)
+    )
+
+    accessory = await setup_integration_factory()
+
+    accessory.restore_recording_state.assert_called_once_with(
+        _stored_state(config_entry.entry_id)["data"]
+    )
+
+
+async def test_nothing_is_restored_on_a_first_start(
+    hass, hass_storage, setup_integration_factory
+):
+    accessory = await setup_integration_factory()
+
+    accessory.restore_recording_state.assert_not_called()
+
+
+async def test_a_recording_state_change_is_saved(
+    hass, hass_storage, config_entry, setup_integration_factory
+):
+    accessory = await setup_integration_factory()
+    accessory.recording_state = _stored_state(config_entry.entry_id)["data"]
+
+    accessory.set_recording_state_changed_callback.call_args.args[0]()
+    await config_entry.runtime_data.accessory_manager.async_stop()
+
+    stored = hass_storage[f"homekit_secure_video.{config_entry.entry_id}.recording"]
+    assert stored["data"] == _stored_state(config_entry.entry_id)["data"]
+
+
+async def test_reset_pairing_forgets_the_recording_state(
+    hass, hass_storage, config_entry, setup_integration_factory
+):
+    key = f"homekit_secure_video.{config_entry.entry_id}.recording"
+    hass_storage[key] = _stored_state(config_entry.entry_id)
+    await setup_integration_factory()
+
+    await config_entry.runtime_data.accessory_manager.async_reset_pairing()
+
+    assert key not in hass_storage

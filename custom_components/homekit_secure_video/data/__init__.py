@@ -15,6 +15,7 @@ from .recording_diagnostics import (
     HomeKitSecureVideoRecorderDiagnostics,
     HomeKitSecureVideoRecordingDiagnostics,
 )
+from .recording_state import HomeKitSecureVideoRecordingState
 from .recording_statistics import HomeKitSecureVideoRecordingStatistics
 from .runtime import HomeKitSecureVideoData
 from .source_profile import HomeKitSecureVideoSourceProfile
@@ -46,6 +47,7 @@ __all__ = [
     "HomeKitSecureVideoOptionsData",
     "HomeKitSecureVideoRecorderDiagnostics",
     "HomeKitSecureVideoRecordingDiagnostics",
+    "HomeKitSecureVideoRecordingState",
     "HomeKitSecureVideoRecordingStatistics",
     "HomeKitSecureVideoSourceProfile",
     "HomeKitSecureVideoStreamRequest",

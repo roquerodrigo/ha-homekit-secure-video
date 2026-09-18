@@ -23,6 +23,7 @@ from ..issues import (
 from ..recording.source_probe import EMPTY_PROFILE, async_probe_source
 from .camera_accessory import HomeKitSecureVideoCameraAccessory
 from .driver import HomeKitSecureVideoAccessoryDriver
+from .recording_state_store import HomeKitSecureVideoRecordingStateStore
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
@@ -98,6 +99,9 @@ class HomeKitSecureVideoAccessoryManager:
         self._driver: HomeKitSecureVideoAccessoryDriver | None = None
         self._accessory: HomeKitSecureVideoCameraAccessory | None = None
         self._data_stream_server = HomeKitSecureVideoDataStreamServer()
+        self._recording_state_store = HomeKitSecureVideoRecordingStateStore(
+            hass, entry.entry_id
+        )
         self._status_listeners: list[Callable[[], None]] = []
 
     @property
@@ -236,6 +240,7 @@ class HomeKitSecureVideoAccessoryManager:
         # also what the repair issues report on.
         source_profile = await self._async_probe_configured_camera()
         LOGGER.debug("Camera %s sends %s", config["camera_entity_id"], source_profile)
+        recording_state = await self._recording_state_store.async_load()
         accessory = HomeKitSecureVideoCameraAccessory(
             driver,
             self._hass,
@@ -246,6 +251,11 @@ class HomeKitSecureVideoAccessoryManager:
         )
         accessory.set_status_changed_callback(self._notify_status_listeners)
         accessory.set_recorder_health_callback(self._report_recorder_health)
+        accessory.set_recording_state_changed_callback(
+            lambda: self._recording_state_store.save(accessory.recording_state)
+        )
+        if recording_state is not None:
+            accessory.restore_recording_state(recording_state)
 
         await self._hass.async_add_executor_job(driver.add_accessory, accessory)
         self._driver = driver
@@ -284,12 +294,16 @@ class HomeKitSecureVideoAccessoryManager:
             # pyhap unregisters mDNS before it closes the HAP socket, so a step
             # that gave up halfway can leave the reserved port held.
             driver.http_server.async_stop()
+        await _bounded(
+            "recording state store", self._recording_state_store.async_flush()
+        )
         LOGGER.debug("Stopped the accessory of %s", self._entry.title)
 
     async def async_reset_pairing(self) -> None:
         """Drop every pairing and publish the accessory with a fresh code."""
         await self.async_stop()
         await self._hass.async_add_executor_job(self.remove_persist_file)
+        await self.async_remove_recording_state()
         await self.async_start()
 
     def _create_driver(
@@ -312,6 +326,10 @@ class HomeKitSecureVideoAccessoryManager:
     def remove_persist_file(self) -> None:
         """Delete the persisted HAP state, if any."""
         self.persist_file.unlink(missing_ok=True)
+
+    async def async_remove_recording_state(self) -> None:
+        """Forget what HomeKit negotiated; a fresh pairing negotiates afresh."""
+        await self._recording_state_store.async_remove()
 
     def _notify_status_listeners(self) -> None:
         """Fire every registered status listener."""
