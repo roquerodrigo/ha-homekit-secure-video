@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.1.3](https://github.com/roquerodrigo/ha-homekit-secure-video/compare/v0.1.2...v0.1.3) (2026-09-18)
+
+
+### Bug Fixes
+
+* address the defects found in the integration review ([b07d817](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/b07d817b97617ac9997a67798ca4aea9c554be0e))
+* **recording:** keep the negotiated recording state across restarts ([5a68ac6](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/5a68ac61a4e84bd76dd62d7af75235acfe14c44f)), closes [#19](https://github.com/roquerodrigo/ha-homekit-secure-video/issues/19)
+* **recording:** keep the offer stable when the camera does not answer the probe ([e91f0de](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/e91f0dee8431d2d84080baea040204606c8a1fa8))
+
+
+### Development Dependencies
+
+* **deps-dev:** bump ruff in the python-deps group ([b3da4d5](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/b3da4d517f4d42c7bdb26744dedd820b5f62a582))
+* **deps-dev:** bump ruff in the python-deps group ([2d46fcb](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/2d46fcb7086d93fb0e012437b01dd78d00831b15))
+* **deps-dev:** bump ruff in the python-deps group ([2ecd8de](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/2ecd8de337b49fd8d0a7c1597b0469f03deb92ae))
+
+
+### Documentation
+
+* add GitHub Sponsors button and support section ([c559757](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/c5597577b7089ba374b741c1917980b11356316d))
+* refresh CLAUDE.md ([e534bff](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/e534bffe3508d5c2e072a29c14418914fae49a42))
+
 ## [0.1.2](https://github.com/roquerodrigo/ha-homekit-secure-video/compare/v0.1.1...v0.1.2) (2026-08-31)
 
 
