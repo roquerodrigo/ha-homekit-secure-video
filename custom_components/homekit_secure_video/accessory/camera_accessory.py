@@ -309,6 +309,7 @@ class HomeKitSecureVideoCameraAccessory(Camera):
             "periodic_snapshots_active": (
                 self._operating_mode.are_periodic_snapshots_active
             ),
+            "source_profile": self._source_profile.copy(),
         }
 
     def restore_recording_state(self, state: HomeKitSecureVideoRecordingState) -> None:

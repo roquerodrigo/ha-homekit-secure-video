@@ -248,6 +248,7 @@ def _stored_state(entry_id):
             "event_snapshots_active": True,
             "homekit_camera_active": True,
             "periodic_snapshots_active": True,
+            "source_profile": None,
         },
     }
 
@@ -297,3 +298,56 @@ async def test_reset_pairing_forgets_the_recording_state(
     await config_entry.runtime_data.accessory_manager.async_reset_pairing()
 
     assert key not in hass_storage
+
+
+async def test_a_state_saved_without_a_profile_loads_with_none(
+    hass, hass_storage, config_entry, setup_integration_factory
+):
+    stored = _stored_state(config_entry.entry_id)
+    del stored["data"]["source_profile"]
+    hass_storage[f"homekit_secure_video.{config_entry.entry_id}.recording"] = stored
+
+    accessory = await setup_integration_factory()
+
+    restored = accessory.restore_recording_state.call_args.args[0]
+    assert restored["source_profile"] is None
+
+
+async def test_a_camera_that_does_not_answer_the_probe_keeps_its_last_profile(
+    hass, hass_storage, config_entry, setup_integration_factory, mock_source_probe
+):
+    from custom_components.homekit_secure_video.accessory import manager as module
+    from custom_components.homekit_secure_video.recording.source_probe import (
+        EMPTY_PROFILE,
+    )
+
+    from .conftest import SOURCE_PROFILE
+
+    stored = _stored_state(config_entry.entry_id)
+    stored["data"]["source_profile"] = dict(SOURCE_PROFILE)
+    hass_storage[f"homekit_secure_video.{config_entry.entry_id}.recording"] = stored
+    mock_source_probe.return_value = dict(EMPTY_PROFILE)
+
+    await setup_integration_factory()
+
+    accessory_class = module.HomeKitSecureVideoCameraAccessory
+    assert accessory_class.call_args.args[5] == SOURCE_PROFILE
+
+
+async def test_a_camera_that_never_answered_the_probe_is_published_as_unknown(
+    hass, hass_storage, config_entry, setup_integration_factory, mock_source_probe
+):
+    from custom_components.homekit_secure_video.accessory import manager as module
+    from custom_components.homekit_secure_video.recording.source_probe import (
+        EMPTY_PROFILE,
+    )
+
+    stored = _stored_state(config_entry.entry_id)
+    stored["data"]["source_profile"] = dict(EMPTY_PROFILE)
+    hass_storage[f"homekit_secure_video.{config_entry.entry_id}.recording"] = stored
+    mock_source_probe.return_value = dict(EMPTY_PROFILE)
+
+    await setup_integration_factory()
+
+    accessory_class = module.HomeKitSecureVideoCameraAccessory
+    assert accessory_class.call_args.args[5] == EMPTY_PROFILE

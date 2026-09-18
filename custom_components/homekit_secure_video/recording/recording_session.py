@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 from typing import TYPE_CHECKING
 
 from ..const import LOGGER
@@ -80,6 +81,7 @@ class HomeKitSecureVideoRecordingSession:
         self._fragments_sent = 0
         self._bytes_sent = 0
         self._media_delivered = False
+        self._ended_on_ceiling = False
         self._task: asyncio.Task[None] | None = None
 
     @property
@@ -216,7 +218,11 @@ class HomeKitSecureVideoRecordingSession:
             async with asyncio.timeout(CLOSE_TIMEOUT_SECONDS):
                 await self._closed_event.wait()
         except TimeoutError:
-            LOGGER.warning(
+            # A clip ended by the ceiling is the ordinary end of a continuous
+            # recording, and the hub does not acknowledge those: it closes the
+            # stream itself after this side does, and opens the next one.
+            LOGGER.log(
+                logging.DEBUG if self._ended_on_ceiling else logging.WARNING,
                 "Recording %s was never acknowledged by the hub, closing it",
                 self._stream_id,
             )
@@ -274,14 +280,17 @@ class HomeKitSecureVideoRecordingSession:
         while not self.is_closed:
             remaining = deadline - asyncio.get_running_loop().time()
             if remaining <= 0:
-                LOGGER.debug("Recording %s hit its time limit", self._stream_id)
+                self._end_on_ceiling()
                 break
 
             try:
                 async with asyncio.timeout(min(FRAGMENT_WAIT_SECONDS, remaining)):
                     fragment = await queue.get()
             except TimeoutError:
-                LOGGER.debug("Recording %s ran out of fragments", self._stream_id)
+                if asyncio.get_running_loop().time() >= deadline:
+                    self._end_on_ceiling()
+                else:
+                    LOGGER.debug("Recording %s ran out of fragments", self._stream_id)
                 break
 
             if held is not None:
@@ -296,6 +305,11 @@ class HomeKitSecureVideoRecordingSession:
 
         self._send_segment(held, is_initialization=False, is_last=True)
         return True
+
+    def _end_on_ceiling(self) -> None:
+        """Note that the clip is being ended by the recording ceiling."""
+        self._ended_on_ceiling = True
+        LOGGER.debug("Recording %s hit its time limit", self._stream_id)
 
     def _send_segment(
         self, payload: bytes, *, is_initialization: bool, is_last: bool
