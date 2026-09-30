@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.4](https://github.com/roquerodrigo/ha-homekit-secure-video/compare/v0.1.3...v0.1.4) (2026-09-30)
+
+
+### Development Dependencies
+
+* **deps-dev:** bump ruff in the python-deps group ([8f67f44](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/8f67f44c63b79da5f06f9054a57fa6464bce7705))
+* **deps-dev:** bump ruff in the python-deps group ([321ed43](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/321ed43f560bc2d9ad14d3ceb025c8d88ff3f6be))
+
+
+### Build System
+
+* **release:** bump uv.lock through release-please ([d463284](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/d463284869fc3392ead169269ff5f97070e66ff6))
+
 ## [0.1.3](https://github.com/roquerodrigo/ha-homekit-secure-video/compare/v0.1.2...v0.1.3) (2026-09-18)
 
 
