@@ -444,10 +444,9 @@ async def test_the_streaming_audio_offer_is_opus_only(accessory):
     )
 
 
-async def test_the_offer_never_advertises_more_fps_than_the_camera_sends(
-    hass, hap_driver, config_entry, camera_state, data_stream_server
+def _recording_frame_rates(
+    hass, hap_driver, config_entry, data_stream_server, source_frame_rate
 ):
-    """The cap is a ceiling: asking ffmpeg for more only duplicates frames."""
     from pyhap import tlv
 
     with patch(f"{MODULE}.get_ffmpeg_manager") as ffmpeg_manager:
@@ -458,7 +457,7 @@ async def test_the_offer_never_advertises_more_fps_than_the_camera_sends(
             config_entry,
             "127.0.0.1",
             data_stream_server,
-            {**EMPTY_SOURCE, "frame_rate": 20.0},
+            {**EMPTY_SOURCE, "frame_rate": source_frame_rate},
         )
 
     video = tlv.decode(
@@ -469,8 +468,38 @@ async def test_the_offer_never_advertises_more_fps_than_the_camera_sends(
     )
     attributes = tlv.decode(video[b"\x01"])[b"\x03"]
     # Each 11-byte attribute block ends with the frame rate.
-    assert attributes[10] == 20
-    assert attributes[21] == 20
+    return {attributes[index] for index in range(10, len(attributes), 11)}
+
+
+@pytest.mark.parametrize(
+    ("source_frame_rate", "advertised"),
+    [(10.0, 15), (15.0, 15), (20.0, 15), (25.0, 15), (30.0, 30), (60.0, 30)],
+)
+async def test_the_recording_offer_only_carries_rates_a_hub_takes(
+    hass,
+    hap_driver,
+    config_entry,
+    camera_state,
+    data_stream_server,
+    source_frame_rate,
+    advertised,
+):
+    """A hub leaves the selection unwritten for 10 or 20 fps; 15 and 30 work."""
+    assert _recording_frame_rates(
+        hass, hap_driver, config_entry, data_stream_server, source_frame_rate
+    ) == {advertised}
+
+
+async def test_the_frame_rate_cap_rounds_the_recording_offer_down(
+    hass, hap_driver, config_entry, camera_state, data_stream_server
+):
+    hass.config_entries.async_update_entry(
+        config_entry, options={"max_width": 1920, "max_height": 1080, "max_fps": 20}
+    )
+
+    assert _recording_frame_rates(
+        hass, hap_driver, config_entry, data_stream_server, 30.0
+    ) == {15}
 
 
 async def test_the_offer_falls_back_when_the_camera_is_unknown(accessory):
