@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/roquerodrigo/ha-homekit-secure-video/compare/v0.1.4...v0.1.5) (2026-10-26)
+
+
+### Development Dependencies
+
+* **deps-dev:** bump the python-deps group with 3 updates ([a3abd1d](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/a3abd1dd9908434cdbb185da1352192fb35bb750))
+
 ## [0.1.4](https://github.com/roquerodrigo/ha-homekit-secure-video/compare/v0.1.3...v0.1.4) (2026-10-25)
 
 
