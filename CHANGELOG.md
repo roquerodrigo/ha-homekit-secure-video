@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/roquerodrigo/ha-homekit-secure-video/compare/v0.1.4...v0.1.5) (2026-11-02)
+
+### Bug fixes
+
+- Cameras that lost power no longer stop recording until the integration is reloaded; the recorder now restarts after 30 seconds without output. ([#41](https://github.com/roquerodrigo/ha-homekit-secure-video/pull/41))
+
+
 ## [0.1.4](https://github.com/roquerodrigo/ha-homekit-secure-video/compare/v0.1.3...v0.1.4) (2026-10-25)
 
 
