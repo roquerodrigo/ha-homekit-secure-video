@@ -27,6 +27,12 @@ SUBSCRIBER_QUEUE_SIZE = 16
 # stopped recording, and it is written right before the stream ends.
 STDERR_LINES_KEPT = 10
 STDERR_DRAIN_SECONDS = 1
+# A camera that loses power never closes its RTSP connection, and ffmpeg only
+# ever reads from it, so nothing on this side finds out: ffmpeg waits on the
+# socket for good. Well above what a slow camera takes to emit its first
+# fragment, because the cost of a false alarm is a restart and a gap in the
+# prebuffer.
+STALLED_OUTPUT_SECONDS = 30
 
 
 class HomeKitSecureVideoRecorder:
@@ -176,15 +182,23 @@ class HomeKitSecureVideoRecorder:
         if process.stdout is None:
             return
 
+        loop = asyncio.get_running_loop()
         try:
-            async for is_initialization, payload in read_segments(process.stdout):
-                if is_initialization:
-                    self._initialization_segment = payload
-                    continue
+            async with asyncio.timeout(STALLED_OUTPUT_SECONDS) as stall_deadline:
+                async for is_initialization, payload in read_segments(process.stdout):
+                    stall_deadline.reschedule(loop.time() + STALLED_OUTPUT_SECONDS)
+                    if is_initialization:
+                        self._initialization_segment = payload
+                        continue
 
-                if self._prebuffer is not None:
-                    self._prebuffer.append(payload)
-                self._publish(payload)
+                    if self._prebuffer is not None:
+                        self._prebuffer.append(payload)
+                    self._publish(payload)
+        except TimeoutError:
+            LOGGER.warning(
+                "The recorder produced nothing for %s seconds, restarting ffmpeg",
+                STALLED_OUTPUT_SECONDS,
+            )
         except HomeKitSecureVideoRecordingError as exception:
             # Left to unwind the task, this would keep ffmpeg alive with
             # nobody draining its output and `is_running` answering True.
