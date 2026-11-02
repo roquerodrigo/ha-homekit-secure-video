@@ -104,12 +104,12 @@ STREAM_ACTIVE = "Active"
 STREAM_ACTIVE_UUID = UUID("000000B0-0000-1000-8000-0026BB765291")
 
 MAX_HOMEKIT_H264_LEVEL = 40
-# A hub simply stops choosing when the offer is slower than this: a camera
-# advertising its own 10 fps left SelectedCameraRecordingConfiguration
-# unwritten and recorded nothing, and the same camera advertising 15 fps
-# recorded normally. Below the floor the frame rate has to be raised, which
-# is the one place duplicated frames are unavoidable.
-MIN_ADVERTISED_FPS = 15
+# A hub simply stops choosing when the recording offer carries a frame rate it
+# does not take: a camera advertising its own 10 fps, and another advertising
+# its own 20 fps, both left SelectedCameraRecordingConfiguration unwritten and
+# recorded nothing, while the same cameras advertising 15 fps recorded
+# normally. Only these rates are ever advertised, ascending.
+RECORDING_FRAME_RATES = (15, 30)
 
 RECORDER_RESTART_DELAY_SECONDS = 5
 MAX_RECORDER_RESTART_DELAY_SECONDS = 300
@@ -125,7 +125,6 @@ UNHEALTHY_RECORDER_RESTARTS = 3
 # going to answer the next restart either, so the answer is reused until the
 # camera has had time to come back.
 SOURCE_PROBE_RETRY_SECONDS = 600
-ADVERTISED_FPS = 30
 
 # AAC-ELD needs libfdk_aac, which the Home Assistant ffmpeg build does
 # not carry; offering a codec that cannot be produced leaves HomeKit
@@ -582,26 +581,21 @@ class HomeKitSecureVideoCameraAccessory(Camera):
             audio_sample_rates=(HomeKitSecureVideoAudioSampleRate.KHZ_32,),
         )
 
-    def _advertised_frame_rate(self, max_fps: int) -> int:
+    @staticmethod
+    def _advertised_frame_rate(frame_rate: int) -> int:
         """
-        Return the frame rate to advertise to HomeKit.
+        Return the recording frame rate to advertise to HomeKit.
 
-        The camera's own rate is the ceiling. Re-encoding can raise a slower
-        source to the 30 fps Secure Video cameras usually advertise, but only
-        by duplicating frames: an encode per invented frame, carrying no
-        picture that was not already there. One camera cost a whole core doing
-        exactly that.
-
-        An earlier round of this concluded the opposite — that advertising a
-        camera's own 20 fps was what set this accessory apart from a working
-        one. That was measured while every recording was being discarded for
-        an unrelated reason, and a camera advertising 15 fps has since
-        recorded normally against a real hub, so the rate is treated as a
-        ceiling like the other two caps.
+        The camera's own rate is the ceiling, rounded down to a rate a hub
+        takes. Re-encoding can raise a slower source to 30 fps, but only by
+        duplicating frames: an encode per invented frame, carrying no picture
+        that was not already there. One camera cost a whole core doing exactly
+        that. Only a camera slower than every accepted rate is raised, to the
+        lowest one.
         """
         return max(
-            MIN_ADVERTISED_FPS,
-            min(ADVERTISED_FPS, limited_frame_rate(self._source_profile, max_fps)),
+            (rate for rate in RECORDING_FRAME_RATES if rate <= frame_rate),
+            default=RECORDING_FRAME_RATES[0],
         )
 
     def _warn_about_unusable_source(self) -> None:

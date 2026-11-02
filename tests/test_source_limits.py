@@ -73,13 +73,13 @@ def test_an_unprobed_camera_under_every_entry_still_gets_an_offer():
     assert limited_resolutions(CATALOGUE, UNKNOWN, 640, 480, 30) == ((1280, 720, 30),)
 
 
-def test_the_floor_is_what_a_slower_camera_gets_raised_to():
-    """A hub stops choosing below a floor, so a 10 fps camera is raised."""
+def test_a_slower_camera_is_below_every_rate_a_hub_takes():
+    """A hub stops choosing below 15 fps, so a 10 fps camera has to be raised."""
     from custom_components.homekit_secure_video.accessory.camera_accessory import (
-        MIN_ADVERTISED_FPS,
+        RECORDING_FRAME_RATES,
     )
 
-    assert limited_frame_rate({"frame_rate": 10.0}, 30) < MIN_ADVERTISED_FPS
+    assert limited_frame_rate({"frame_rate": 10.0}, 30) < min(RECORDING_FRAME_RATES)
 
 
 def test_an_entry_slower_than_the_frame_rate_keeps_its_own():

@@ -557,6 +557,68 @@ async def test_a_recorder_that_ends_without_a_complaint_still_reports_its_exit(
     await recorder.async_stop()
 
 
+async def test_a_recorder_whose_output_stalls_stops_ffmpeg(recorder, caplog):
+    """A camera that lost power leaves ffmpeg alive, waiting on a dead socket."""
+    from custom_components.homekit_secure_video.recording import recorder as module
+
+    stream = _box(b"ftyp") + _box(b"moov") + _box(b"moof") + _box(b"mdat", b"one")
+    command = HomeKitSecureVideoRecordingCommand(
+        input_source="rtsp://camera",
+        configuration=CONFIGURATION,
+        source_has_audio=False,
+    )
+    process = _process(stream)
+    ended: list[bool] = []
+    recorder.set_stream_ended_callback(lambda: ended.append(True))
+
+    with (
+        patch("asyncio.create_subprocess_exec", AsyncMock(return_value=process)),
+        patch.object(module, "STALLED_OUTPUT_SECONDS", 0.01),
+    ):
+        await recorder.async_start(command, CONFIGURATION)
+        async with asyncio.timeout(5):
+            while not ended:
+                await asyncio.sleep(0)
+
+    assert process.terminate.call_count == 1
+    assert not recorder.is_running
+    assert recorder.initialization_segment is None
+    assert "produced nothing" in caplog.text
+    await recorder.async_stop()
+
+
+async def test_a_recorder_producing_fragments_is_not_taken_for_stalled(
+    recorder, caplog
+):
+    """The deadline covers the gap between fragments, not the length of the run."""
+    from custom_components.homekit_secure_video.recording import recorder as module
+
+    command = HomeKitSecureVideoRecordingCommand(
+        input_source="rtsp://camera",
+        configuration=CONFIGURATION,
+        source_has_audio=False,
+    )
+    process = _process(_box(b"ftyp") + _box(b"moov"))
+    stall_seconds = 0.2
+    fragment = _box(b"moof") + _box(b"mdat", b"one")
+
+    with (
+        patch("asyncio.create_subprocess_exec", AsyncMock(return_value=process)),
+        patch.object(module, "STALLED_OUTPUT_SECONDS", stall_seconds),
+    ):
+        await recorder.async_start(command, CONFIGURATION)
+        for _ in range(5):
+            await asyncio.sleep(stall_seconds / 2)
+            process.stdout.feed_data(fragment)
+
+        await asyncio.sleep(0)
+        assert recorder.is_running
+        assert "produced nothing" not in caplog.text
+        await recorder.async_stop()
+
+    assert process.terminate.call_count == 1
+
+
 async def test_a_subscriber_that_falls_behind_drops_fragments(recorder, caplog):
     fragments = b"".join(
         _box(b"moof") + _box(b"mdat", bytes([index]))

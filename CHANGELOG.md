@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.1.4](https://github.com/roquerodrigo/ha-homekit-secure-video/compare/v0.1.3...v0.1.4) (2026-10-25)
+
+
+### Bug Fixes
+
+* **manifest:** require a minimum HAP-python version instead of pinning it ([f0f8d9b](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/f0f8d9b5e85734dcf06636209cf9d3ee9549dbb5))
+* **recording:** advertise only the frame rates hubs accept ([cdb0732](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/cdb0732a3c06ddf8bd25a9fb5bbe5834c67a5f7e))
+
+
+### Development Dependencies
+
+* **deps-dev:** bump ruff in the python-deps group ([8f67f44](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/8f67f44c63b79da5f06f9054a57fa6464bce7705))
+* **deps-dev:** bump ruff in the python-deps group ([321ed43](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/321ed43f560bc2d9ad14d3ceb025c8d88ff3f6be))
+
+
+### Build System
+
+* **release:** bump uv.lock through release-please ([d463284](https://github.com/roquerodrigo/ha-homekit-secure-video/commit/d463284869fc3392ead169269ff5f97070e66ff6))
+
 ## [0.1.3](https://github.com/roquerodrigo/ha-homekit-secure-video/compare/v0.1.2...v0.1.3) (2026-09-18)
 
 
