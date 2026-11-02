@@ -23,11 +23,11 @@ dev = [
     "pytest-asyncio==1.4.0",
     "pytest-cov==7.1.0",
     "pytest-homeassistant-custom-component==0.13.356",
-    "pyturbojpeg==2.5.0",
+    "pyturbojpeg==2.6.1",
 ]
 lint = [
-    "ruff==0.17.2",
-    "mypy==2.4.0",
+    "ruff==0.17.3",
+    "mypy==2.4.1",
 ]
 
 [tool.pytest.ini_options]
