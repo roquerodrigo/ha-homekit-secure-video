@@ -33,6 +33,8 @@ The Home Assistant version is pinned in two places and **must be updated togethe
 
 Verify the pairing on PyPI before committing: the `requires_dist` of `pytest-homeassistant-custom-component` must list the same `homeassistant==<X.Y.Z>` you pinned in `pyproject.toml`.
 
+`pytest`, `pytest-asyncio` and `pytest-cov` are not pinned directly: the harness pins them, so they move with it. Dependabot ignores both `homeassistant` and the harness.
+
 ## Architecture
 
 ### One accessory per entry, never a bridge
