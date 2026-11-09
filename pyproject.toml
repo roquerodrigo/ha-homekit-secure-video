@@ -15,7 +15,7 @@ package = false
 [dependency-groups]
 dev = [
     "ha-ffmpeg==3.2.2",
-    "hap-python[qrcode]==5.0.0",
+    "hap-python[qrcode]==5.1.0",
     "homeassistant==2026.8.2",
     "pre-commit==4.7.0",
     "pypng==0.20220715.0",
@@ -23,7 +23,7 @@ dev = [
     "pyturbojpeg==2.6.1",
 ]
 lint = [
-    "ruff==0.17.3",
+    "ruff==0.17.4",
     "mypy==2.4.1",
 ]
 
