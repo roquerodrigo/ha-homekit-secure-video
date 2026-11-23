@@ -23,7 +23,7 @@ dev = [
     "pyturbojpeg==2.6.1",
 ]
 lint = [
-    "ruff==0.17.5",
+    "ruff==0.17.6",
     "mypy==2.4.1",
 ]
 
