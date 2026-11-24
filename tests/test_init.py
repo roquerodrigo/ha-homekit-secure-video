@@ -12,14 +12,9 @@ async def test_setup_entry_loads_successfully(hass, setup_integration):
 
 
 async def test_setup_entry_creates_its_entities(hass, setup_integration):
-    counts = {"sensor": 3, "binary_sensor": 2, "image": 1, "button": 1}
+    counts = {"sensor": 2, "binary_sensor": 2, "image": 1, "button": 1}
     for platform, expected in counts.items():
         assert len(hass.states.async_all(platform)) == expected, platform
-
-
-async def test_setup_entry_publishes_the_pairing_code(hass, setup_integration):
-    state = hass.states.get("sensor.front_door_pairing_code")
-    assert state.state == PAIRING_CODE
 
 
 async def test_setup_entry_starts_the_accessory(
@@ -148,9 +143,87 @@ async def test_an_old_entry_gets_a_pinned_pairing_identity(
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    assert entry.version == 2
+    assert entry.version == 3
     assert len(entry.data["pairing_code"]) == len("123-45-678")
     assert len(entry.data["setup_id"]) == 4
+
+
+async def test_migration_replaces_the_code_the_old_sensor_recorded(
+    hass,
+    camera_state,
+    mock_accessory_driver,
+    mock_camera_accessory,
+    mock_data_stream_server,
+):
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.homekit_secure_video.const import DOMAIN
+
+    from .conftest import CAMERA_ENTITY_ID, HAP_PORT, SETUP_ID
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Front Door",
+        version=2,
+        data={
+            "camera_entity_id": CAMERA_ENTITY_ID,
+            "port": HAP_PORT,
+            "pairing_code": PAIRING_CODE,
+            "setup_id": SETUP_ID,
+        },
+        unique_id=CAMERA_ENTITY_ID,
+    )
+    entry.add_to_hass(hass)
+
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.version == 3
+    assert entry.data["pairing_code"] != PAIRING_CODE
+    assert entry.data["setup_id"] == SETUP_ID
+
+
+async def test_migration_removes_the_pairing_code_sensor(
+    hass,
+    camera_state,
+    mock_accessory_driver,
+    mock_camera_accessory,
+    mock_data_stream_server,
+):
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.homekit_secure_video.const import DOMAIN
+
+    from .conftest import CAMERA_ENTITY_ID, HAP_PORT, SETUP_ID
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Front Door",
+        version=2,
+        data={
+            "camera_entity_id": CAMERA_ENTITY_ID,
+            "port": HAP_PORT,
+            "pairing_code": PAIRING_CODE,
+            "setup_id": SETUP_ID,
+        },
+        unique_id=CAMERA_ENTITY_ID,
+    )
+    entry.add_to_hass(hass)
+    entity_registry = er.async_get(hass)
+    entity_registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        f"{entry.entry_id}_pairing_code",
+        config_entry=entry,
+        suggested_object_id="front_door_pairing_code",
+    )
+
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entity_registry.async_get("sensor.front_door_pairing_code") is None
+    assert hass.states.get("sensor.front_door_pairing_code") is None
 
 
 async def test_the_pairing_code_survives_a_reload(hass, setup_integration):

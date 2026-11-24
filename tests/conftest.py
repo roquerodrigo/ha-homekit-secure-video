@@ -141,7 +141,7 @@ def config_entry(hass):
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Front Door",
-        version=2,
+        version=3,
         data={
             "camera_entity_id": CAMERA_ENTITY_ID,
             "motion_entity_id": MOTION_ENTITY_ID,

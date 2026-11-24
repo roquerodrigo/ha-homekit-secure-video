@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 from .camera_mode import HomeKitSecureVideoCameraModeSensor
 from .last_recording import HomeKitSecureVideoLastRecordingSensor
-from .pairing_code import HomeKitSecureVideoPairingCodeSensor
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -17,7 +16,6 @@ if TYPE_CHECKING:
 __all__ = [
     "HomeKitSecureVideoCameraModeSensor",
     "HomeKitSecureVideoLastRecordingSensor",
-    "HomeKitSecureVideoPairingCodeSensor",
 ]
 
 
@@ -30,7 +28,6 @@ async def async_setup_entry(
     coordinator = entry.runtime_data.coordinator
     async_add_entities(
         [
-            HomeKitSecureVideoPairingCodeSensor(coordinator),
             HomeKitSecureVideoCameraModeSensor(coordinator),
             HomeKitSecureVideoLastRecordingSensor(coordinator),
         ]

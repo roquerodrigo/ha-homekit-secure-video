@@ -27,22 +27,14 @@ async def test_every_entity_belongs_to_the_entry_device(hass, setup_integration)
     entries = er.async_entries_for_config_entry(
         entity_registry, setup_integration.entry_id
     )
-    assert len(entries) == 7
+    assert len(entries) == 6
     assert {entry.device_id for entry in entries} == {device.id}
 
 
-async def test_pairing_code_sensor_exposes_the_code(hass, setup_integration):
-    assert hass.states.get("sensor.front_door_pairing_code").state == PAIRING_CODE
-
-
-async def test_pairing_code_sensor_is_empty_once_paired(
-    hass, setup_integration, mock_accessory_driver
-):
-    mock_accessory_driver.state.paired = True
-    setup_integration.runtime_data.coordinator.async_handle_status_change()
-    await hass.async_block_till_done()
-
-    assert hass.states.get("sensor.front_door_pairing_code").state == "unknown"
+async def test_no_entity_state_carries_the_pairing_code(hass, setup_integration):
+    for state in hass.states.async_all():
+        assert PAIRING_CODE not in state.state
+        assert PAIRING_CODE not in str(state.attributes)
 
 
 async def test_paired_binary_sensor_follows_the_accessory(

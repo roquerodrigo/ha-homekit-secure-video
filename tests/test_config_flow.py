@@ -214,7 +214,7 @@ async def test_reconfigure_rejects_a_camera_another_entry_publishes(
     )
     MockConfigEntry(
         domain=DOMAIN,
-        version=2,
+        version=3,
         data={
             "camera_entity_id": "camera.back_door",
             "port": 21065,

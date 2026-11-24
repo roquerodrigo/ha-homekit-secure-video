@@ -52,9 +52,6 @@
   },
   "entity": {
     "sensor": {
-      "pairing_code": {
-        "name": "Código de pareamento"
-      },
       "camera_mode": {
         "name": "Modo da câmera no HomeKit",
         "state": {
@@ -104,5 +101,9 @@
       "title": "{entry}: a câmera não se mantém gravando",
       "description": "O codificador de `{camera}` parou e precisou ser reiniciado várias vezes seguidas sem nunca se manter no ar, então o HomeKit está recebendo uma câmera que não grava nada. Normalmente é a câmera recusando ou derrubando a transmissão — verifique se ela está acessível e se a integração dela consegue servir a transmissão de forma contínua. O log do Home Assistant traz o que o ffmpeg relatou a cada desistência."
     }
+  },
+  "common": {
+    "pairing_notification_title": "Pareamento HomeKit: {camera}",
+    "pairing_notification_message": "Para adicionar {camera} ao app Casa, escaneie o QR code de pareamento na página do dispositivo ou digite este código:\n\n### {pairing_code}"
   }
 }

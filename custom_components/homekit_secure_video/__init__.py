@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.const import Platform
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import entity_registry as er
 from homeassistant.loader import async_get_loaded_integration
 from pyhap.util import generate_pincode, generate_setup_id
 
@@ -13,6 +14,7 @@ from .accessory import HomeKitSecureVideoAccessoryManager
 from .const import CONF_PAIRING_CODE, CONF_SETUP_ID, DOMAIN
 from .coordinator import HomeKitSecureVideoDataUpdateCoordinator
 from .data import HomeKitSecureVideoData
+from .pairing_notification import HomeKitSecureVideoPairingNotification
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -62,6 +64,17 @@ async def async_setup_entry(
 
     await coordinator.async_config_entry_first_refresh()
 
+    pairing_notification = await HomeKitSecureVideoPairingNotification.async_create(
+        hass, coordinator
+    )
+    entry.async_on_unload(pairing_notification.async_dismiss)
+    entry.async_on_unload(
+        coordinator.async_add_listener(
+            pairing_notification.async_handle_coordinator_update
+        )
+    )
+    pairing_notification.async_handle_coordinator_update()
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
@@ -71,20 +84,37 @@ async def async_migrate_entry(
     hass: HomeAssistant,
     entry: HomeKitSecureVideoConfigEntry,
 ) -> bool:
-    """Pin the pairing code and setup id of entries created before they existed."""
-    if entry.version >= 2:  # noqa: PLR2004 -- the version this migration lands in
-        return True
+    """
+    Bring entries created by earlier versions up to date.
 
+    Version 2 pinned the pairing code and the setup id on the entry. Version 3
+    drops the sensor that published the code as entity state, and replaces the
+    code that sensor recorded in history with a fresh one; existing pairings
+    do not depend on it.
+    """
+    _remove_pairing_code_sensor(hass, entry)
     hass.config_entries.async_update_entry(
         entry,
         data={
             **entry.data,
             CONF_PAIRING_CODE: generate_pincode().decode(),
-            CONF_SETUP_ID: generate_setup_id(),
+            CONF_SETUP_ID: entry.data.get(CONF_SETUP_ID) or generate_setup_id(),
         },
-        version=2,
+        version=3,
     )
     return True
+
+
+def _remove_pairing_code_sensor(
+    hass: HomeAssistant,
+    entry: HomeKitSecureVideoConfigEntry,
+) -> None:
+    entity_registry = er.async_get(hass)
+    entity_id = entity_registry.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, f"{entry.entry_id}_pairing_code"
+    )
+    if entity_id is not None:
+        entity_registry.async_remove(entity_id)
 
 
 async def async_unload_entry(
