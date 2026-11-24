@@ -36,9 +36,43 @@ jobs:
       - name: Validate
         uses: roquerodrigo/home-assistant-autopilot@latest
 
+  hassfest:
+    name: Hassfest
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate the manifest
+        uses: home-assistant/actions/hassfest@9e9565e68f5a70d874202871f4c4064d23814235 # master
+
+  hacs:
+    name: HACS
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate the repository
+        uses: hacs/action@d556e736723344f83838d08488c983a15381059a # 22.5.0
+        with:
+          category: integration
+
   update-pr-branch:
     if: github.event_name == 'pull_request'
-    needs: [lint, tests, validate]
+    needs: [lint, tests, validate, hassfest, hacs]
     permissions:
       contents: write
       pull-requests: write

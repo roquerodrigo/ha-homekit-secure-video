@@ -241,7 +241,12 @@ with a one-line comment explaining the deliberate narrowing — see
 [Home Assistant Autopilot](https://github.com/marketplace/actions/home-assistant-autopilot)
 validates the repository shape on every push: `hassfest`, the catalog checks of
 the [Home Assistant Marketplace](https://contributors.home-assistant.io/marketplace/),
-`hacs.json` and the versions it declares. Every check must stay green:
+`hacs.json` and the versions it declares. The official
+[HACS action](https://hacs.xyz/docs/publish/action) and
+[hassfest](https://developers.home-assistant.io/blog/2020/04/16/hassfest/) also
+run as jobs of their own in `ci.yml`, without `ignore` keys, because the HACS
+default catalog asks for their runs when a repository is submitted. Every check
+must stay green:
 
 - **One integration per repository**, located in `custom_components/<domain>/`.
 - `manifest.json` must declare `domain`, `name`, `version`, `documentation`,
