@@ -1,219 +1,160 @@
 # HomeKit Secure Video
 
+<!-- ha-marketplace:exclude-start -->
 [![CI](https://github.com/roquerodrigo/ha-homekit-secure-video/actions/workflows/ci.yml/badge.svg)](https://github.com/roquerodrigo/ha-homekit-secure-video/actions/workflows/ci.yml)
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
+[![GitHub release](https://img.shields.io/github/v/release/roquerodrigo/ha-homekit-secure-video)](https://github.com/roquerodrigo/ha-homekit-secure-video/releases/latest)
+[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-db61a2?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/roquerodrigo)
 
-[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-db61a2?logo=githubsponsors&logoColor=white&style=for-the-badge)](https://github.com/sponsors/roquerodrigo)
+[![Open your Home Assistant instance and open a repository in the Marketplace.](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=roquerodrigo&repository=ha-homekit-secure-video&category=integration)
+<!-- ha-marketplace:exclude-end -->
 
-[![Open your Home Assistant instance and open the repository inside HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=roquerodrigo&repository=ha-homekit-secure-video&category=integration)
+Put your Home Assistant cameras in the Apple Home app with HomeKit Secure Video: watch them live, and let your Apple home hub record clips when motion is detected and store them in iCloud. Each camera pairs with the Home app like any HomeKit camera, directly with Home Assistant on your local network. The HomeKit Bridge that comes with Home Assistant shows cameras in the Home app but cannot record them.
 
----
+## Features
 
-Custom [Home Assistant](https://www.home-assistant.io/) integration that publishes Home Assistant cameras to Apple HomeKit as accessories supporting **Secure Video** — motion-triggered recording processed on a HomeKit home hub and stored in iCloud, which the built-in `homekit` bridge does not offer.
+- Watch any Home Assistant camera that serves a video stream live in the Home app, with its audio.
+- Record a clip to iCloud each time a Home Assistant motion sensor detects motion, including the few seconds before it. You can also record continuously.
+- See the camera's snapshot in the Home app.
+- Choose between re-encoding the video, which works with most cameras, and passing the camera's stream through, which uses almost no CPU.
+- Follow from Home Assistant the mode chosen in the Home app, whether a clip is being recorded and when the last one finished.
+- Pair by scanning a QR code, and get a repair in Home Assistant when a camera's stream cannot be served to HomeKit.
 
-> **Status: recording works end to end.** Each config entry publishes a HomeKit camera accessory that pairs with the Home app, serves live video and audio, and delivers motion-triggered Secure Video recordings to a home hub. See [Roadmap](#roadmap).
+## Requirements
 
-Each entry publishes **one camera** as its own HomeKit accessory, with its own port and pairing code — cameras cannot be published behind a HomeKit bridge, which is why the built-in `homekit` integration also falls back to accessory mode for them.
+- Home Assistant 2026.8.2 or newer.
+- A camera in Home Assistant that can serve a video stream, sending H.264 video.
+- To record: an Apple home hub (HomePod or Apple TV) and an iCloud+ plan with a free camera slot. Without them the Home app offers live view only.
+- To record on motion: a motion sensor in Home Assistant (a binary sensor of the motion type). Without one, the camera can only record continuously.
+- Your iPhone and your home hub must reach Home Assistant on the local network, with mDNS (Bonjour) working between them. Each camera uses its own TCP port, starting at 21064.
+- Spare CPU if you re-encode: about one CPU core for each 1080p camera.
 
+<!-- ha-marketplace:exclude-start -->
 ## Installation
 
-### HACS
+### Home Assistant Marketplace (recommended)
 
-1. In HACS, add this repository as a **custom repository** with category **Integration**.
-2. Install **HomeKit Secure Video** and restart Home Assistant.
+1. Select the **Open your Home Assistant instance** button above, or go to **Settings → Marketplace**, select **Add from link** in the upper right corner, enter `roquerodrigo/ha-homekit-secure-video` and select **Add**.
+2. Select **Install**.
+3. Restart Home Assistant.
+
+The Marketplace comes with Home Assistant 2026.11 and later. On older versions, add this repository to HACS as a custom repository of type **Integration** and install it from there.
 
 ### Manual
 
-Copy `custom_components/homekit_secure_video/` into your Home Assistant `config/custom_components/` directory and restart.
+1. Download `homekit_secure_video.zip` from the [latest release](https://github.com/roquerodrigo/ha-homekit-secure-video/releases/latest).
+2. Extract it into `config/custom_components/homekit_secure_video/`.
+3. Restart Home Assistant.
+<!-- ha-marketplace:exclude-end -->
 
 ## Configuration
 
-Add the integration through **Settings → Devices & Services → Add Integration → HomeKit Secure Video**. Configuration is done entirely in the UI; there is no YAML.
+Go to **Settings → Devices & services → Add integration**, search for **HomeKit Secure Video** and fill in the form. Each entry publishes one camera, so repeat this for every camera you want in the Home app.
 
-Pick the camera to publish, the motion sensor to report to HomeKit, and whether to re-encode the video (see below). Only cameras that can serve a stream can be published. Repeat for each camera you want in the Home app.
+| Field                | What to enter                                                                 | Default |
+|----------------------|-------------------------------------------------------------------------------|---------|
+| Camera               | The camera to publish. Only cameras that can serve a stream are accepted      |         |
+| Motion sensor        | The motion sensor whose detections start a recording                          |         |
+| Re-encode video      | Whether to re-encode the video for HomeKit. See Re-encoding below             | On      |
+| Always report motion | Record continuously. The motion sensor is ignored and iCloud fills up faster  | Off     |
 
-**Link a motion sensor to get recordings.** Motion is the event Secure Video records on, so an entry without one publishes a camera the Home app will only stream, never record.
+Without a motion sensor and with **Always report motion** off, the camera streams in the Home app but never records.
 
-**Always report motion** records continuously instead: HomeKit is told the motion never stops, so it opens one recording after another. It ignores the motion sensor and uses considerably more iCloud storage.
+### Pairing with the Home app
 
-Everything about an entry is edited in one place: **Reconfigure**, in the entry's three-dot menu. The camera, the motion trigger and the streaming limits all live there, and the pairing survives the change, so the accessory does not have to be added to the Home app again.
+1. While the camera is not paired, Home Assistant shows a notification with its pairing code. The device page of the camera also shows a **Pairing QR code**.
+2. In the Home app, select **Add Accessory** and scan the QR code, or enter the code from the notification.
+3. To record, open the camera's settings in the Home app and choose **Stream & Allow Recording**.
 
-Every entry creates these entities:
+The notification goes away once the camera is paired. The code stays the same after restarts and reconfiguration.
 
-| Entity | Purpose |
-| --- | --- |
-| `image` — Pairing QR code | Scan it with the Home app to pair |
-| `binary_sensor` — Paired | Whether a HomeKit controller is paired |
-| `button` — Reset pairing | Drops every pairing, so the camera can be added to the Home app again |
-| `sensor` — HomeKit camera mode | Off / Detect activity / Stream / Stream and allow recording |
-| `binary_sensor` — Recording | Whether a clip is being delivered to the home hub right now |
-| `sensor` — Last recording | When the last clip finished being delivered |
+### Changing a camera later
 
-While the camera is not paired, a notification shows the code to type into the Home app; it goes away as soon as a controller pairs. The code is never published as entity state, which every user can read and the recorder keeps in its history.
+Open the integration, select the three-dot menu of the camera and select **Reconfigure**. The camera stays paired, so you do not have to add it to the Home app again.
 
-**Re-encode video** is offered when adding a camera and can be changed later by reconfiguring the entry; it is stored as an option either way, and defaults to on.
+| Field                | What it does                                                                                 | Default |
+|----------------------|----------------------------------------------------------------------------------------------|---------|
+| Camera               | The camera to publish. You can point the entry at another camera, or another stream of it   |         |
+| Motion sensor        | The motion sensor whose detections start a recording. Clear it to stop recording on motion  |         |
+| Always report motion | Record continuously                                                                          | Off     |
+| Maximum width        | The widest picture offered to HomeKit, a choice from 320 to 3840 pixels                      | 1920    |
+| Maximum height       | The tallest picture offered to HomeKit, a choice from 240 to 2160 pixels                     | 1080    |
+| Maximum frame rate   | The highest frame rate offered to HomeKit, from 10 to 60 in steps of 5                       | 30      |
+| Re-encode video      | Whether to re-encode the video for HomeKit                                                   | On      |
+| Include audio        | Send the camera's audio to the Home app in live view. No effect on a camera without audio   | On      |
 
-With it on, the video is re-encoded to exactly what HomeKit negotiates — profile, level, resolution and frame rate. This is what makes cameras work whose own stream HomeKit will not take, and it costs about one CPU core per 1080p camera.
+The three maximums apply to live view and to recordings. Home Assistant also avoids offering HomeKit a larger picture or a higher frame rate than the camera sends.
 
-With it off, the camera's stream is passed through untouched apart from rewriting an over-spec H.264 level in the stream header, which needs no re-encoding. Two cameras cost about a tenth of a core this way. It requires a camera that already sends a resolution HomeKit was offered — a camera's secondary stream usually does, and pointing the entry at one is the cheapest way to run.
+### Re-encoding
 
-The **maximum width, height and frame rate** cap what the accessory offers to HomeKit, for the live stream and for recordings alike.
+With **Re-encode video** on, Home Assistant converts the camera's video to exactly the picture size, frame rate and H.264 settings HomeKit asks for. This makes cameras work whose own stream HomeKit refuses, and costs about one CPU core for each 1080p camera.
 
-**Include audio** sends the camera's own audio to HomeKit as Opus alongside the video. Opus is the only codec offered: AAC-ELD needs an ffmpeg built with `libfdk_aac`, which Home Assistant's is not. Cameras that send no audio are unaffected.
+With it off, the camera's stream is passed through as it is, apart from a header fix that costs nothing. Two cameras use about a tenth of a CPU core this way. It needs a camera that already sends H.264 at a size HomeKit accepts, 1080p or less. A camera's secondary stream often does, and pointing the entry at it is the cheapest way to run. If a recording does not match what HomeKit asked for, that recording is re-encoded anyway, so it is not lost.
 
-Repairs are raised under **Settings → Repairs** when the probed camera cannot be served as configured — no stream source, a codec other than H.264, or a picture larger than HomeKit was offered while re-encoding is off. Each one clears itself once the cause is gone.
+## Entities
 
-## Roadmap
+Each camera appears as one device, named after the camera, with these entities:
 
-- [x] Camera selection in the config flow, one camera per entry.
-- [x] A HomeKit accessory per entry, with Camera RTP Stream Management, live video over SRTP, snapshots and a linked motion sensor.
-- [x] Pairing QR code exposed as an entity, and the pairing code shown in a notification while unpaired.
-- [x] HomeKit Data Stream transport (the encrypted channel Secure Video records over).
-- [x] Camera Recording Management and Camera Operating Mode services, with the negotiated recording configuration.
-- [x] Fragmented MP4 pipeline: prebuffer, motion-triggered clips, delivery to the home hub.
-- [x] Live audio (Opus over SRTP).
-- [x] Recording entities, repair issues and recording diagnostics.
-- [x] Brand assets shipped with the integration (Home Assistant 2026.3+ serves them from `brand/`).
+| Entity              | Type          | Shows                                                                            |
+|---------------------|---------------|----------------------------------------------------------------------------------|
+| HomeKit camera mode | Sensor        | The mode chosen in the Home app: Off, Detect activity, Stream or Stream and allow recording |
+| Recording           | Binary sensor | Running while a clip is being sent to the home hub                               |
+| Last recording      | Sensor        | When the last clip finished being sent                                           |
+| Paired              | Binary sensor | Diagnostic. Whether the camera is paired with the Home app                       |
+| Pairing QR code     | Image         | Diagnostic. The code to scan with the Home app                                   |
+| Reset pairing       | Button        | Configuration. Removes every pairing, so you can add the camera to a Home again  |
 
-Recording requires an Apple home hub (HomePod or Apple TV) and an iCloud+ plan with a free camera slot; without them the Home app never offers "Stream & Allow Recording".
+## How it works
 
-## Development
+Home Assistant publishes each camera on your local network as a HomeKit camera of its own. The Home app and the home hub talk to Home Assistant directly. Clips leave your network only when the home hub stores them in iCloud.
 
-```bash
-scripts/setup                                              # create .venv and install deps (uv sync)
-scripts/develop                                            # start Home Assistant in debug mode with the integration loaded
-scripts/lint                                               # ruff format + ruff check + mypy + pytest
-uv run ruff format --check .                               # check formatting
-uv run ruff check .                                        # lint
-uv run mypy custom_components/homekit_secure_video         # type-check
-uv run pytest                                              # run tests with the 90 % coverage gate
-```
+When you open the live view, Home Assistant reads the camera's stream and sends it to the Home app. While the camera is set to **Stream & Allow Recording**, Home Assistant keeps reading the camera so that it always holds the last few seconds. When the motion sensor turns on, the home hub starts a recording, receives those seconds and then the live footage until the motion ends. A clip lasts at most 3 minutes. With **Always report motion**, the hub starts one clip after another.
 
-Both scripts run through `uv`, which manages `./.venv` automatically — no `source .venv/bin/activate` needed. For ad-hoc commands, prefix with `uv run`.
+HomeKit picks the recording quality: 1280x720 or 1920x1080, at 15 or 30 frames per second, within the maximums you set and, as far as these sizes allow, no larger than what the camera sends. HomeKit only takes 16:9 pictures, so a re-encoded camera with another shape gets black bars.
 
-Home Assistant runs with config in `config/` and `PYTHONPATH` pointing at `custom_components/` — no symlinks. To recreate entity/device IDs during development:
+The pairing and the recording settings HomeKit chose are kept across restarts, so the camera comes back in the Home app on its own. If the camera drops out, Home Assistant reconnects to it automatically.
 
-```bash
-rm config/.storage/core.entity_registry config/.storage/core.device_registry
-```
+## Troubleshooting
 
-Conventions for contributors live in [`CODE_STYLE.md`](./CODE_STYLE.md); architectural notes for AI agents in [`CLAUDE.md`](./CLAUDE.md).
+**The Home app does not offer Stream & Allow Recording.** Recording needs an Apple home hub and an iCloud+ plan with a free camera slot. Check both in the Home app settings.
 
-### Pre-commit hooks
+**The camera never records.** Link a motion sensor, or turn on **Always report motion**, with **Reconfigure**. The **Recording** entity turns on while a clip is being sent.
 
-Install once per clone (after `scripts/setup`):
+**Recording turns on, but no clip appears in the Home app.** The home hub silently drops clips that arrive slower than real time, which happens when re-encoding is too heavy for your hardware. Lower **Maximum width**, **Maximum height** or **Maximum frame rate**, or turn off re-encoding with a stream that already matches what HomeKit accepts.
 
-```bash
-pre-commit install
-```
+**Settings → Repairs shows a problem with a camera.** Home Assistant checks the camera's stream each time the entry starts, including after **Reconfigure**, and each repair goes away once its cause is fixed.
 
-This wires ruff + basic file hygiene checks (`.pre-commit-config.yaml`) into every commit, mirroring the CI lint job.
+- The camera does not provide a stream: point the entry at a camera that serves RTSP.
+- The camera sends a video codec HomeKit cannot play: switch the camera to H.264, often available on its secondary stream.
+- The camera sends a larger picture than HomeKit negotiated: point the entry at a smaller stream, or turn on re-encoding.
+- The camera keeps dropping out of recording: make sure the camera is reachable and serves its stream continuously. The Home Assistant log shows what went wrong each time.
 
-## Layout
+**You want to add the camera to another Home, or start over.** Press **Reset pairing**, then pair again with the QR code or the code in the notification.
 
-```
-custom_components/homekit_secure_video/
-├── __init__.py        # async_setup_entry / unload / reload / remove
-├── accessory/         # the HomeKit accessory layer
-│   ├── __init__.py
-│   ├── camera_accessory.py  # pyhap Camera: streams, snapshots, motion
-│   ├── camera_operating_mode.py  # CameraOperatingMode service
-│   ├── data_stream_transport.py  # DataStreamTransportManagement service
-│   ├── driver.py            # AccessoryDriver reporting pairing changes
-│   ├── hap_server.py        # HAP server retaining each session's shared key
-│   ├── manager.py           # publishes, stops and re-publishes the accessory
-│   ├── recording_management.py   # CameraRecordingManagement service
-│   ├── selected_recording_configuration_characteristic.py
-│   └── setup_data_stream_transport_characteristic.py
-├── binary_sensor.py   # "Paired" and "Recording"
-├── brand/             # brand assets (icon, logo, svg)
-├── button.py          # "Reset pairing"
-├── config_flow.py     # camera selection + port reservation; reconfigure step
-├── const.py           # DOMAIN, LOGGER, config keys, port range, resolutions
-├── coordinator.py     # push-only coordinator fed by the accessory
-├── data/              # one TypedDict/dataclass per file; type aliases in __init__.py
-│   ├── __init__.py    # type aliases (ConfigEntry, Json*) + re-exports
-│   ├── accessory_status.py
-│   ├── camera_options.py
-│   ├── config_data.py
-│   ├── diagnostics_entry.py
-│   ├── diagnostics_payload.py
-│   ├── options_data.py
-│   ├── recording_diagnostics.py
-│   ├── recording_statistics.py
-│   ├── runtime.py     # HomeKitSecureVideoData dataclass
-│   ├── source_profile.py
-│   ├── stream_request.py
-│   └── stream_session_info.py
-├── datastream/        # HomeKit Data Stream transport
-│   ├── __init__.py
-│   ├── connection.py        # one TCP connection and its handshake
-│   ├── constants.py         # wire constants of the protocol
-│   ├── frame.py             # framing
-│   ├── frame_codec.py       # ChaCha20-Poly1305 per direction
-│   ├── message.py           # header + body of one message
-│   ├── opack.py             # Apple's binary format
-│   ├── prepared_session.py
-│   ├── server.py            # accepts the controller's connection
-│   └── session_keys.py      # HKDF-SHA512 session keys
-├── diagnostics.py     # downloadable diagnostics with pairing-secret redaction
-├── entity.py          # base CoordinatorEntity
-├── exceptions/        # one file per exception class
-│   ├── __init__.py
-│   ├── data_stream_error.py
-│   ├── opack_error.py
-│   └── recording_error.py
-├── icons.json         # entity icons keyed by translation_key
-├── image.py           # pairing QR code
-├── issues.py          # repair issues raised from the camera source probe
-├── manifest.json
-├── pairing_notification.py  # pairing code in a notification while unpaired
-├── redaction.py       # keeps camera credentials out of logs and diagnostics
-├── recording/         # HomeKit Secure Video recording
-│   ├── __init__.py
-│   ├── constants.py              # wire constants of the recording services
-│   ├── ffmpeg_recording_command.py
-│   ├── fragmented_mp4.py         # ftyp/moov and moof/mdat
-│   ├── prebuffer.py              # the seconds before the trigger
-│   ├── recorder.py               # the persistent ffmpeg
-│   ├── recording_session.py      # the dataSend delivery
-│   ├── selected_configuration.py
-│   ├── source_match.py           # does the camera match what was negotiated?
-│   ├── source_probe.py           # what the camera sends, asked of ffprobe
-│   └── supported_configuration.py
-├── sensor/            # one class per sensor
-│   ├── __init__.py
-│   ├── camera_mode.py
-│   └── last_recording.py
-├── streaming_options.py  # the streaming fields of the config flow
-├── streaming/         # live SRTP streaming
-│   ├── __init__.py
-│   ├── live_stream_command.py   # ffmpeg arguments, video and Opus audio
-│   └── live_stream_session.py   # the running ffmpeg process
-└── translations/
-    ├── en.json
-    └── pt-BR.json
-```
+**Something else is wrong.** Download the diagnostics from the camera's device page and attach them to an [issue](https://github.com/roquerodrigo/ha-homekit-secure-video/issues), along with the debug log. The pairing code is removed from the diagnostics, and camera passwords are removed from the log.
 
-Layout convention (one top-level class per file; related classes grouped under a directory) is documented in [`CODE_STYLE.md`](./CODE_STYLE.md).
+## Known limitations
 
-## CI
+- Each camera is a separate accessory in the Home app, with its own pairing code. HomeKit does not accept cameras behind a bridge.
+- Only H.264 video is supported.
+- Recordings start on motion only. Doorbell presses do not start a recording.
+- When you lower the maximums, the home hub can keep the recording quality it chose earlier until it negotiates again on its own.
 
-The workflows call the reusable workflows in [`roquerodrigo/workflows`](https://github.com/roquerodrigo/workflows), and the release uses the [Release Autopilot](https://github.com/marketplace/actions/release-autopilot) action:
+## Support
 
-- **`ci.yml`** — ruff (check + format) + mypy, pytest with the coverage gate, and Home Assistant Marketplace validation; push/PR to `main`
-- **`codeql.yml`** — GitHub CodeQL security scan; push/PR to `main` and a weekly cron
-- **`release.yml`** — Release Autopilot, gated on a green CI run on `main`
-- **`auto-assign.yml`** — assigns new issues/PRs to the code owner
+This integration is built and maintained on personal time, on hardware bought for the purpose. If it is useful to you, consider [sponsoring the work](https://github.com/sponsors/roquerodrigo). It keeps the devices, the testing and the releases coming.
+
+Report bugs and ask for features in the [issue tracker](https://github.com/roquerodrigo/ha-homekit-secure-video/issues).
+
+<!-- ha-marketplace:exclude-start -->
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and workflow, and [CODE_STYLE.md](CODE_STYLE.md) for the code conventions.
 
 ## Trademark
 
 Apple, HomeKit and the HomeKit logo are trademarks of Apple Inc. This project is not affiliated with, endorsed by, or sponsored by Apple Inc.
 
-## Support
-
-This integration is built and maintained on personal time, on hardware bought for the purpose. If it is useful to you, consider [sponsoring the work](https://github.com/sponsors/roquerodrigo) — it keeps the devices, the testing and the releases coming.
-
 ## License
 
 [MIT](LICENSE)
+<!-- ha-marketplace:exclude-end -->
