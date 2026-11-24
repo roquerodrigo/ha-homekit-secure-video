@@ -216,15 +216,14 @@ with a one-line comment explaining the deliberate narrowing — see
 
 ## Config / options / repairs / diagnostics
 
-- `config_flow.py` carries `user`, `reauth`, `reauth_confirm` and `reconfigure`
-  steps, all sharing one `_validate` helper and one `_credentials_schema`
-  builder.
-- `options_flow.py` holds the single `HomeKitSecureVideoOptionsFlow`
-  class. New options keys go into the `HomeKitSecureVideoOptionsData`
-  TypedDict in `data/options_data.py`.
-- `repairs.py` exposes `async_create_fix_flow`. Sample helpers like
-  `async_raise_deprecated_api_issue` show how to register issues from anywhere
-  in the integration.
+- `config_flow.py` carries the `user` and `reconfigure` steps, sharing one
+  `_validate_camera` helper and one `_camera_schema` builder.
+- There is no options flow (see `CLAUDE.md`): the reconfigure step edits the
+  streaming options too. Their fields live in `streaming_options.py`, they are
+  stored in `entry.options`, and new options keys go into the
+  `HomeKitSecureVideoOptionsData` TypedDict in `data/options_data.py`.
+- `issues.py` raises and withdraws informational repair issues. None is
+  fixable, so there is no `repairs.py`.
 - `diagnostics.py` returns `HomeKitSecureVideoDiagnosticsPayload`. Sensitive
   keys go into the `TO_REDACT: frozenset[str]` constant.
 
@@ -232,9 +231,9 @@ with a one-line comment explaining the deliberate narrowing — see
 
 - Two locales: `en.json` and `pt-BR.json`. `tests/test_translations.py`
   parametrizes over every locale and fails if their nested key sets diverge.
-- Issue strings live under `issues.<issue_id>`; options strings under
-  `options.step.init.data`; flow strings under `config.step.<step_id>`;
-  entity names under `entity.<platform>.<key>.name`.
+- Issue strings live under `issues.<issue_id>`; flow strings, the streaming
+  options included, under `config.step.<step_id>`; entity names under
+  `entity.<platform>.<key>.name`.
 
 ## HACS publishing requirements
 
@@ -264,9 +263,9 @@ must stay green:
 - Brand assets live under `custom_components/<domain>/brand/` — `icon.png`,
   `logo.png` (+ `@2x` variants) and `icon.svg`. This repository ships the Apple
   HomeKit artwork described in
-  [`brand/README.md`](./custom_components/homekit_secure_video/brand/README.md);
-  the assets still have to be registered in
-  [home-assistant/brands](https://github.com/home-assistant/brands).
+  [`brand/README.md`](./custom_components/homekit_secure_video/brand/README.md).
+  Home Assistant 2026.3 and later serves them from that directory, so nothing
+  is registered in [home-assistant/brands](https://github.com/home-assistant/brands).
 - A `README.md` at the repo root is required; HACS surfaces it as the
   integration description. Its header follows the layout below.
 
@@ -276,38 +275,37 @@ GitHub releases to users, so keep the changelog grep-able.
 
 ## README header
 
-Every repository opens `README.md` with the same header, in this exact order:
-**title → badges → HACS link → `---` separator → the rest of the document.**
+Every repository opens `README.md` with the title, then the badges and the
+"Open your Home Assistant instance" button inside the Home Assistant
+Marketplace exclusion markers, so the Marketplace page leaves them out:
 
 ```markdown
 # <Title>
 
+<!-- ha-marketplace:exclude-start -->
 [![CI](https://github.com/roquerodrigo/<repo>/actions/workflows/ci.yml/badge.svg)](https://github.com/roquerodrigo/<repo>/actions/workflows/ci.yml)
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
+[![GitHub release](https://img.shields.io/github/v/release/roquerodrigo/<repo>)](https://github.com/roquerodrigo/<repo>/releases/latest)
+[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-db61a2?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/roquerodrigo)
 
-[![Open your Home Assistant instance and open the repository inside HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=roquerodrigo&repository=<repo>&category=integration)
-
----
+[![Open your Home Assistant instance and open a repository in the Marketplace.](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=roquerodrigo&repository=<repo>&category=integration)
+<!-- ha-marketplace:exclude-end -->
 ```
 
 - `owner=` is always `roquerodrigo`; `repository=` is the repository name.
 - `category=integration` for an integration; `category=plugin` for a Lovelace
   card repository.
-- The HACS link is a paragraph of its own, separated from the badge block by a
-  blank line. The badge row and the "Open your Home Assistant instance" button
-  are different things and must not run together.
-- Preserve the badges a repository already carries and invent no new ones; all
-  of them belong **before** the HACS link.
-- The `---` immediately after the HACS link is the header separator. A README
-  that already uses `---` further down keeps those as section breaks — do not
-  add a second separator to the header.
+- The button uses the `hacs_repository` redirect, which opens HACS before
+  Home Assistant 2026.11 and the Marketplace from 2026.11 on.
+- No `---` separator follows the header.
+- Installation, Contributing, Trademark and License sit inside exclusion
+  markers too. Visible text never links to an in-page `#anchor`: headings get
+  no ids in the Marketplace.
 
-**A private repository gets no HACS link.** `my.home-assistant.io` resolves the
-target through the public GitHub API, so on a private repository the button
-lands on something HACS cannot install. It is the same reason the catalog checks
-skip those repositories. Ship the title, the badges and
-the separator, and add the link when — and only when — the repository is made
-public.
+**A private repository gets no "Open your Home Assistant instance" button.**
+`my.home-assistant.io` resolves the target through the public GitHub API, so on
+a private repository the button lands on something that cannot be installed.
+It is the same reason the catalog checks skip those repositories. Add the
+button when, and only when, the repository is made public.
 
 ## Quality scale
 

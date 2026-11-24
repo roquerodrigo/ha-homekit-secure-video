@@ -1,55 +1,53 @@
-# Contribution guidelines
+# Contributing
 
-Contributing to this project should be as easy and transparent as possible, whether it's:
+Bug reports, ideas and pull requests are welcome.
 
-- Reporting a bug
-- Discussing the current state of the code
-- Submitting a fix
-- Proposing new features
+## Reporting a bug
 
-## Github is used for everything
+Open an [issue](https://github.com/roquerodrigo/ha-homekit-secure-video/issues/new/choose) with:
 
-Github is used to host code, to track issues and feature requests, as well as accept pull requests.
+- the Home Assistant version, the integration version and the camera model and integration;
+- what you did, what you expected and what happened;
+- the diagnostics downloaded from the device or integration page (the pairing code and setup code are redacted) and the debug log of the problem.
 
-Pull requests are the best way to propose changes to the codebase.
+## Development setup
 
-1. Fork the repo and create your branch from `main`.
-2. If you've changed something, update the documentation.
-3. Make sure your code lints (run `uv run ruff format --check .`, `uv run ruff check .` and `uv run mypy custom_components/homekit_secure_video`).
-4. Test your contribution.
-5. Issue that pull request!
+The project uses [uv](https://docs.astral.sh/uv/), which manages `.venv` for you.
 
-## Any contributions you make will be under the MIT Software License
+```bash
+scripts/setup      # install the dependencies into .venv
+scripts/develop    # run Home Assistant at http://localhost:8123 with this integration loaded
+```
 
-In short, when you submit code changes, your submissions are understood to be under the same [MIT License](http://choosealicense.com/licenses/mit/) that covers the project. Feel free to contact the maintainers if that's a concern.
+`scripts/develop` uses the configuration in [`config/`](config/) and loads the integration from `custom_components/` through `PYTHONPATH`, without symlinks. To start over with fresh entity and device IDs, delete `config/.storage/core.entity_registry` and `config/.storage/core.device_registry`.
 
-## Report bugs using Github's [issues](../../issues)
+Recording can only be tested end to end with a real Apple home hub (HomePod or Apple TV) and an iCloud+ plan with a free camera slot. Everything below the hub is covered by the tests.
 
-GitHub issues are used to track public bugs.
-Report a bug by [opening a new issue](../../issues/new/choose); it's that easy!
+## Checks
 
-## Write bug reports with detail, background, and sample code
+Run these before opening a pull request. CI runs the same ones, along with the Home Assistant Marketplace, hassfest and HACS validations.
 
-**Great Bug Reports** tend to have:
+```bash
+uv run ruff format .                                  # format
+uv run ruff check . --fix                             # lint
+uv run mypy custom_components/homekit_secure_video    # type-check
+uv run pytest                                         # tests, coverage must stay at 90 % or more
+```
 
-- A quick summary and/or background
-- Steps to reproduce
-  - Be specific!
-  - Give sample code if you can.
-- What you expected would happen
-- What actually happens
-- Notes (possibly including why you think this might be happening, or stuff you tried that didn't work)
+`scripts/lint` runs the same four checks without changing any file (`ruff format --check` and `ruff check` without `--fix`).
 
-## Use a Consistent Coding Style
+`pre-commit install` runs ruff format, ruff check and mypy on every commit, along with basic file checks. The hooks use the tool versions pinned in `pyproject.toml` and `uv.lock`, the same ones CI uses.
 
-The project uses [ruff](https://docs.astral.sh/ruff/) (config in `pyproject.toml`). Run `uv run ruff format --check .`, `uv run ruff check .` and `uv run mypy custom_components/homekit_secure_video` before sending a PR.
+Read [CODE_STYLE.md](CODE_STYLE.md) before adding or restructuring code, and [CLAUDE.md](CLAUDE.md) for the protocol and recording details that are not obvious from the code.
 
-## Test your code modification
+## Pull requests
 
-This project is scaffolded from [ha-integration-blueprint](https://github.com/roquerodrigo/ha-integration-blueprint), which is based on the [integration_blueprint template](https://github.com/ludeeus/integration_blueprint).
-
-Run `scripts/setup` once to create the `uv`-managed virtual environment, then `scripts/develop` to start a stand-alone Home Assistant instance in debug mode with the integration loaded and the included [`configuration.yaml`](./config/configuration.yaml) file.
+1. Fork the repository and branch from `main`.
+2. Write commit messages as [Conventional Commits](https://www.conventionalcommits.org/). Releases and their notes are generated from them. Mark breaking changes with `!` or a `BREAKING CHANGE:` footer.
+3. Update `translations/en.json` and `translations/pt-BR.json` together when you change user-facing strings. `tests/test_translations.py` fails when their keys differ.
+4. Update the README when behaviour, configuration or entities change.
+5. Fill in the pull request template.
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under its MIT License.
+Contributions are released under the project's [MIT License](LICENSE).
