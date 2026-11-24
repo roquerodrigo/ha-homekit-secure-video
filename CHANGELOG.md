@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.0](https://github.com/roquerodrigo/ha-homekit-secure-video/compare/v0.1.5...v0.2.0) (2026-11-24)
+
+The pairing code moves from a sensor to a notification shown while the camera is unpaired, so it no longer sits in entity state or history.
+
+### Breaking changes
+
+- The Pairing code sensor is removed. While the camera is unpaired, a notification shows the code; the Pairing QR code image entity remains available for pairing. ([#53](https://github.com/roquerodrigo/ha-homekit-secure-video/pull/53))
+
+### Improvements
+
+- Existing entries migrate automatically: the old sensor is removed and a fresh pairing code is issued, while current pairings keep working. ([#53](https://github.com/roquerodrigo/ha-homekit-secure-video/pull/53))
+
+### Bug fixes
+
+- The pairing code is no longer exposed as entity state, where every user could read it and the recorder kept it in history. ([#53](https://github.com/roquerodrigo/ha-homekit-secure-video/pull/53))
+
 ## [0.1.5](https://github.com/roquerodrigo/ha-homekit-secure-video/compare/v0.1.4...v0.1.5) (2026-11-02)
 
 ### Bug fixes
