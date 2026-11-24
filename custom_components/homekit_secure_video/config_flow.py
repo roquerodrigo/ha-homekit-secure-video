@@ -127,7 +127,7 @@ def _is_port_free(port: int) -> bool:
 class HomeKitSecureVideoFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for HomeKit Secure Video."""
 
-    VERSION = 2
+    VERSION = 3
 
     # The narrowed ``HomeKitSecureVideoConfigData`` parameter is intentional
     # — HA's base class declares ``dict[str, Any] | None`` here, and we trade

@@ -1,9 +1,6 @@
 {
     "entity": {
         "sensor": {
-            "pairing_code": {
-                "default": "mdi:key"
-            },
             "camera_mode": {
                 "default": "mdi:cctv"
             },

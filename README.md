@@ -42,13 +42,14 @@ Every entry creates these entities:
 
 | Entity | Purpose |
 | --- | --- |
-| `sensor` — Pairing code | The code to type into the Home app; empty once paired |
 | `image` — Pairing QR code | Scan it with the Home app to pair |
 | `binary_sensor` — Paired | Whether a HomeKit controller is paired |
-| `button` — Reset pairing | Drops every pairing and regenerates the code |
+| `button` — Reset pairing | Drops every pairing, so the camera can be added to the Home app again |
 | `sensor` — HomeKit camera mode | Off / Detect activity / Stream / Stream and allow recording |
 | `binary_sensor` — Recording | Whether a clip is being delivered to the home hub right now |
 | `sensor` — Last recording | When the last clip finished being delivered |
+
+While the camera is not paired, a notification shows the code to type into the Home app; it goes away as soon as a controller pairs. The code is never published as entity state, which every user can read and the recorder keeps in its history.
 
 **Re-encode video** is offered when adding a camera and can be changed later by reconfiguring the entry; it is stored as an option either way, and defaults to on.
 
@@ -66,7 +67,7 @@ Repairs are raised under **Settings → Repairs** when the probed camera cannot 
 
 - [x] Camera selection in the config flow, one camera per entry.
 - [x] A HomeKit accessory per entry, with Camera RTP Stream Management, live video over SRTP, snapshots and a linked motion sensor.
-- [x] Pairing code and QR code exposed as entities.
+- [x] Pairing QR code exposed as an entity, and the pairing code shown in a notification while unpaired.
 - [x] HomeKit Data Stream transport (the encrypted channel Secure Video records over).
 - [x] Camera Recording Management and Camera Operating Mode services, with the negotiated recording configuration.
 - [x] Fragmented MP4 pipeline: prebuffer, motion-triggered clips, delivery to the home hub.
@@ -166,6 +167,7 @@ custom_components/homekit_secure_video/
 ├── image.py           # pairing QR code
 ├── issues.py          # repair issues raised from the camera source probe
 ├── manifest.json
+├── pairing_notification.py  # pairing code in a notification while unpaired
 ├── redaction.py       # keeps camera credentials out of logs and diagnostics
 ├── recording/         # HomeKit Secure Video recording
 │   ├── __init__.py
@@ -182,8 +184,7 @@ custom_components/homekit_secure_video/
 ├── sensor/            # one class per sensor
 │   ├── __init__.py
 │   ├── camera_mode.py
-│   ├── last_recording.py
-│   └── pairing_code.py
+│   └── last_recording.py
 ├── streaming_options.py  # the streaming fields of the config flow
 ├── streaming/         # live SRTP streaming
 │   ├── __init__.py

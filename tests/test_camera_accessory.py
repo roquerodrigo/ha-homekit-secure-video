@@ -681,7 +681,7 @@ async def test_always_on_motion_reports_motion_without_a_sensor(
     entry = MockConfigEntry(
         domain=DOMAIN,
         title="Front Door",
-        version=2,
+        version=3,
         data={
             "camera_entity_id": CAMERA_ENTITY_ID,
             "always_on_motion": True,

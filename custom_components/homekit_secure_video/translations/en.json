@@ -52,9 +52,6 @@
   },
   "entity": {
     "sensor": {
-      "pairing_code": {
-        "name": "Pairing code"
-      },
       "camera_mode": {
         "name": "HomeKit camera mode",
         "state": {
@@ -104,5 +101,9 @@
       "title": "{entry}: the camera keeps dropping out of recording",
       "description": "The encoder for `{camera}` stopped and had to be restarted several times in a row without ever staying up, so HomeKit is being offered a camera that records nothing. The camera is usually refusing or dropping the stream — check that it is reachable and that its integration can serve the stream continuously. The Home Assistant log carries what ffmpeg reported each time it gave up."
     }
+  },
+  "common": {
+    "pairing_notification_title": "HomeKit pairing: {camera}",
+    "pairing_notification_message": "To add {camera} to the Home app, scan the pairing QR code on its device page, or enter this code:\n\n### {pairing_code}"
   }
 }

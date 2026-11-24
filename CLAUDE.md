@@ -47,7 +47,7 @@ The accessory is local and pushes its own changes, so the coordinator runs with 
 
 ### Pairing state on disk
 
-`pyhap` persists the accessory's key material itself. The file lives at `.storage/homekit_secure_video.<entry_id>.state`, mirroring what the core `homekit` integration does. `async_remove_entry` deletes it, and the "Reset pairing" button stops the accessory, deletes the file and starts it again, which drops every paired controller. The pairing code and setup id are *not* regenerated — they are pinned on the config entry (see below), so the code and QR code the entities show stay valid for pairing again.
+`pyhap` persists the accessory's key material itself. The file lives at `.storage/homekit_secure_video.<entry_id>.state`, mirroring what the core `homekit` integration does. `async_remove_entry` deletes it, and the "Reset pairing" button stops the accessory, deletes the file and starts it again, which drops every paired controller. The pairing code and setup id are *not* regenerated — they are pinned on the config entry (see below), so the QR code and the pairing notification stay valid for pairing again.
 
 ### Nothing acquired before a failure survives it
 
@@ -188,7 +188,11 @@ plainly intends.
 
 ### Pairing identity is ours, not HAP-python's
 
-`pyhap` regenerates `pincode` and `setup_id` on every start — it persists the key material and the paired clients, but not those two. Since this integration publishes the code and the QR code as *entities*, they are generated once in the config flow, stored on the config entry and fed back into the driver on every start. `async_migrate_entry` backfills entries created before this existed.
+`pyhap` regenerates `pincode` and `setup_id` on every start — it persists the key material and the paired clients, but not those two. Since this integration shows the QR code as an entity and the code in a notification, they are generated once in the config flow, stored on the config entry and fed back into the driver on every start. `async_migrate_entry` backfills entries created before this existed.
+
+### The pairing code stays out of entity state
+
+Entity state is readable by every Home Assistant user and lands in the recorder history, and since the code is pinned, a value sitting in history stays valid for pairing after "Reset pairing". So the code is never an entity: `pairing_notification.py` shows it in a persistent notification while the accessory is published and unpaired, and dismisses it on pairing and on unload — the way the core `homekit` integration does. The QR code stays an image entity, whose state is only a timestamp. Config entry version 3 removed the sensor that used to publish the code, and its migration replaced the code that sensor had recorded with a fresh one; existing pairings do not depend on the code.
 
 ### Diagnostics
 
