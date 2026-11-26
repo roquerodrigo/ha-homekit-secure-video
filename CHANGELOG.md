@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.1](https://github.com/roquerodrigo/ha-homekit-secure-video/compare/v0.2.0...v0.2.1) (2026-11-26)
+
+Motion-triggered recordings now end reliably once the home hub knows the motion is over.
+
+### Improvements
+
+- Clips now run on for about one negotiated fragment after motion clears, and motion returning before the clip ends keeps the same recording going. ([#59](https://github.com/roquerodrigo/ha-homekit-secure-video/pull/59))
+
+### Bug fixes
+
+- Recording clips now end only after the home hub knows the motion is over, so they are no longer left unacknowledged and closed on a timeout. ([#59](https://github.com/roquerodrigo/ha-homekit-secure-video/pull/59))
+
 ## [0.2.0](https://github.com/roquerodrigo/ha-homekit-secure-video/compare/v0.1.5...v0.2.0) (2026-11-24)
 
 The pairing code moves from a sensor to a notification shown while the camera is unpaired, so it no longer sits in entity state or history.
