@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -161,6 +163,65 @@ async def test_the_end_of_the_trigger_ends_the_recording(session, connection, re
     last = _data_events(connection)[-1]
     assert last["endOfStream"] is True
     assert last["packets"][0]["metadata"]["isLastDataChunk"] is True
+
+
+async def test_the_clip_does_not_end_on_a_fragment_that_arrives_too_early(
+    session, connection, recorder
+):
+    session.start()
+    await _settle()
+    session.request_stop(not_before=time.monotonic() + 60)
+    await recorder.queue.put(b"after")
+    await _settle()
+
+    assert session.is_stop_requested
+    assert not any(event.get("endOfStream") for event in _data_events(connection))
+
+
+async def test_the_clip_ends_on_the_first_fragment_that_is_due(
+    session, connection, recorder
+):
+    session.start()
+    await _settle()
+    session.request_stop(not_before=time.monotonic() + 60)
+    await recorder.queue.put(b"early")
+    await _settle()
+    session.withdraw_stop()
+    session.request_stop(not_before=time.monotonic() - 1)
+    await recorder.queue.put(b"last")
+    await _settle()
+
+    last = _data_events(connection)[-1]
+    assert last["endOfStream"] is True
+    assert last["packets"][0]["data"] == b"last"
+
+
+async def test_a_later_end_of_the_trigger_keeps_the_earlier_one(
+    session, connection, recorder
+):
+    session.start()
+    await _settle()
+    session.request_stop(not_before=time.monotonic() - 1)
+    session.request_stop(not_before=time.monotonic() + 60)
+    await recorder.queue.put(b"last")
+    await _settle()
+
+    assert _data_events(connection)[-1]["endOfStream"] is True
+
+
+async def test_the_trigger_coming_back_keeps_the_clip_going(
+    session, connection, recorder
+):
+    session.start()
+    await _settle()
+    session.request_stop()
+    session.withdraw_stop()
+    await recorder.queue.put(b"live")
+    await recorder.queue.put(b"later")
+    await _settle()
+
+    assert not session.is_stop_requested
+    assert not any(event.get("endOfStream") for event in _data_events(connection))
 
 
 async def test_a_large_fragment_is_split_into_chunks(
@@ -411,8 +472,6 @@ async def test_a_recording_with_nothing_to_send_is_closed(connection, make_sessi
 async def test_a_clip_ended_by_the_ceiling_is_not_reported_as_unacknowledged(
     session, connection, recorder, caplog
 ):
-    import logging
-
     from custom_components.homekit_secure_video.recording import recording_session
 
     caplog.set_level(logging.DEBUG, logger="custom_components.homekit_secure_video")
@@ -438,8 +497,6 @@ async def test_a_clip_ended_by_the_ceiling_is_not_reported_as_unacknowledged(
 async def test_a_clip_that_ran_out_of_fragments_still_warns_when_unacknowledged(
     session, connection, recorder, caplog
 ):
-    import logging
-
     from custom_components.homekit_secure_video.recording import recording_session
 
     caplog.set_level(logging.DEBUG, logger="custom_components.homekit_secure_video")
@@ -456,3 +513,4 @@ async def test_a_clip_that_ran_out_of_fragments_still_warns_when_unacknowledged(
         if "never acknowledged" in record.getMessage()
     ]
     assert [record.levelno for record in unacknowledged] == [logging.WARNING]
+    assert "after 3 fragments (10 bytes)" in unacknowledged[0].getMessage()

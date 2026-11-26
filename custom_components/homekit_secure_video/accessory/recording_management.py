@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import fields
 from enum import IntEnum
 from typing import TYPE_CHECKING, Final
@@ -97,7 +98,7 @@ class HomeKitSecureVideoRecordingManagementService:
         self._selected_value: str | None = None
         self._last_recording: datetime | None = None
         self._session: HomeKitSecureVideoRecordingSession | None = None
-        self._stop_requested = False
+        self._trigger_cleared_at: float | None = None
         self._recordings_started = 0
         self._last_statistics: HomeKitSecureVideoRecordingStatistics | None = None
         self.service = self._build_service()
@@ -215,14 +216,17 @@ class HomeKitSecureVideoRecordingManagementService:
         trigger short enough to clear before then would otherwise leave that
         recording with no end at all, running to the ceiling.
         """
+        cleared_at = time.monotonic()
         if self._session is not None and not self._session.is_closed:
-            self._session.request_stop()
+            self._session.request_stop(cleared_at + self._post_roll_seconds)
         else:
-            self._stop_requested = True
+            self._trigger_cleared_at = cleared_at
 
     def resume_recording(self) -> None:
-        """Let the next recording run: the trigger is on again."""
-        self._stop_requested = False
+        """Keep recording: the trigger is on again."""
+        self._trigger_cleared_at = None
+        if self._session is not None and not self._session.is_closed:
+            self._session.withdraw_stop()
 
     def abort_recording(
         self,
@@ -413,9 +417,11 @@ class HomeKitSecureVideoRecordingManagementService:
         )
         self._session.start()
         self._recordings_started += 1
-        if self._stop_requested:
-            self._stop_requested = False
-            self._session.request_stop()
+        if self._trigger_cleared_at is not None:
+            self._session.request_stop(
+                self._trigger_cleared_at + self._post_roll_seconds
+            )
+            self._trigger_cleared_at = None
 
     def _rejection_for(
         self, message: HomeKitSecureVideoDataStreamMessage
@@ -459,6 +465,21 @@ class HomeKitSecureVideoRecordingManagementService:
         """Release the recording whose connection went away."""
         if self._session is not None and self._session.connection is connection:
             self._session.abandon()
+
+    @property
+    def _post_roll_seconds(self) -> float:
+        """
+        Return how long a clip runs on once the trigger has cleared.
+
+        The hub ignores an end of stream that reaches it before it knows the
+        motion is over, and HAP-python holds the motion event back to coalesce
+        it with others, so a clip ended on the very next fragment races the
+        event that explains its end. One negotiated fragment ends the clip on
+        footage recorded after the motion ended instead.
+        """
+        if self._selected is None:
+            return 0
+        return self._selected.fragment_milliseconds / 1000
 
     def _matches(self, message: HomeKitSecureVideoDataStreamMessage) -> bool:
         """Return whether the message names the session in flight."""

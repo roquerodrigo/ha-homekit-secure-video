@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 from typing import TYPE_CHECKING
 
 from ..const import LOGGER
@@ -74,7 +75,7 @@ class HomeKitSecureVideoRecordingSession:
         self._stream_id = stream_id
         self._request_id = request_id
         self._on_closed = on_closed
-        self._stop = asyncio.Event()
+        self._ends_not_before: float | None = None
         self._closed_event = asyncio.Event()
         self._closed = False
         self._data_sequence_number = 1
@@ -117,9 +118,26 @@ class HomeKitSecureVideoRecordingSession:
         self._task = asyncio.create_task(self._async_deliver())
         self._task.add_done_callback(self._handle_delivery_done)
 
-    def request_stop(self) -> None:
-        """Ask the session to finish after the fragment it is on."""
-        self._stop.set()
+    @property
+    def is_stop_requested(self) -> bool:
+        """Return whether the trigger has cleared and the clip is winding down."""
+        return self._ends_not_before is not None
+
+    def request_stop(self, not_before: float | None = None) -> None:
+        """
+        End the clip on the first fragment that arrives from ``not_before`` on.
+
+        ``not_before`` is a ``time.monotonic()`` reading and defaults to now; a
+        later request keeps the earlier one.
+        """
+        if self._ends_not_before is None:
+            self._ends_not_before = (
+                time.monotonic() if not_before is None else not_before
+            )
+
+    def withdraw_stop(self) -> None:
+        """Keep the clip going: the trigger is on again before it ended."""
+        self._ends_not_before = None
 
     def handle_acknowledgement(self) -> None:
         """Close the session after the hub acknowledged the last fragment."""
@@ -218,13 +236,17 @@ class HomeKitSecureVideoRecordingSession:
             async with asyncio.timeout(CLOSE_TIMEOUT_SECONDS):
                 await self._closed_event.wait()
         except TimeoutError:
-            # A clip ended by the ceiling is the ordinary end of a continuous
-            # recording, and the hub does not acknowledge those: it closes the
-            # stream itself after this side does, and opens the next one.
+            # The hub never acknowledges an end of stream while it still
+            # believes the motion is going on, which is how every clip ended
+            # by the ceiling ends: it closes the stream after this side does,
+            # and opens the next one.
             LOGGER.log(
                 logging.DEBUG if self._ended_on_ceiling else logging.WARNING,
-                "Recording %s was never acknowledged by the hub, closing it",
+                "Recording %s was never acknowledged by the hub after %s "
+                "fragments (%s bytes), closing it",
                 self._stream_id,
+                self._fragments_sent,
+                self._bytes_sent,
             )
             self.close(HomeKitSecureVideoDataStreamCloseReason.TIMEOUT)
 
@@ -295,7 +317,7 @@ class HomeKitSecureVideoRecordingSession:
 
             if held is not None:
                 self._send_segment(held, is_initialization=False, is_last=False)
-            if self._stop.is_set():
+            if self._is_due_to_end():
                 self._send_segment(fragment, is_initialization=False, is_last=True)
                 return True
             held = fragment
@@ -305,6 +327,13 @@ class HomeKitSecureVideoRecordingSession:
 
         self._send_segment(held, is_initialization=False, is_last=True)
         return True
+
+    def _is_due_to_end(self) -> bool:
+        """Return whether the fragment arriving now may end the clip."""
+        return (
+            self._ends_not_before is not None
+            and time.monotonic() >= self._ends_not_before
+        )
 
     def _end_on_ceiling(self) -> None:
         """Note that the clip is being ended by the recording ceiling."""

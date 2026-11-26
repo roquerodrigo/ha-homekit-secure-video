@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -247,6 +248,24 @@ async def test_motion_is_mirrored_onto_the_accessory(hass, accessory):
     await hass.async_block_till_done()
 
     assert detected.value is True
+
+
+async def test_the_end_of_the_motion_reaches_the_recording_on_the_event_loop(
+    hass, accessory
+):
+    hass.states.async_set(MOTION_ENTITY_ID, STATE_ON, {"device_class": "motion"})
+    await accessory.run()
+    threads: list[threading.Thread] = []
+
+    with patch.object(
+        accessory._recording_management,
+        "stop_recording",
+        side_effect=lambda: threads.append(threading.current_thread()),
+    ):
+        hass.states.async_set(MOTION_ENTITY_ID, STATE_OFF, {"device_class": "motion"})
+        await hass.async_block_till_done()
+
+    assert threads == [threading.current_thread()]
 
 
 async def test_stop_releases_the_motion_subscription(hass, accessory):
