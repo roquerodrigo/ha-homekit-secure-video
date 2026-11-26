@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -85,6 +85,16 @@ def _write(service, name, value):
     # services are built standalone, so one is stood in for.
     characteristic.broker = MagicMock()
     characteristic.client_update_value(value)
+
+
+MONOTONIC = (
+    "custom_components.homekit_secure_video.accessory.recording_management"
+    ".time.monotonic"
+)
+
+
+def _fragment_seconds(management):
+    return management.selected_configuration.fragment_milliseconds / 1000
 
 
 def _enable(management):
@@ -591,7 +601,7 @@ async def test_a_motion_that_ends_before_the_hub_opens_still_ends_the_clip(manag
     management._handle_open(MagicMock(), _open_message())
 
     assert management.is_recording_in_flight
-    assert management._session._stop.is_set()
+    assert management._session.is_stop_requested
     management.abort_recording()
 
 
@@ -602,5 +612,48 @@ async def test_motion_starting_again_forgets_an_earlier_end(management):
 
     management._handle_open(MagicMock(), _open_message())
 
-    assert not management._session._stop.is_set()
+    assert not management._session.is_stop_requested
     management.abort_recording()
+
+
+async def test_an_end_before_the_open_counts_from_when_the_trigger_cleared(
+    management,
+):
+    _enable(management)
+    with patch(MONOTONIC, return_value=100.0):
+        management.stop_recording()
+
+    management._handle_open(MagicMock(), _open_message())
+
+    assert management._session._ends_not_before == 100.0 + _fragment_seconds(management)
+    management.abort_recording()
+
+
+async def test_motion_starting_again_keeps_the_recording_in_flight_going(
+    management,
+):
+    _enable(management)
+    management._handle_open(MagicMock(), _open_message())
+    management.stop_recording()
+
+    management.resume_recording()
+
+    assert not management._session.is_stop_requested
+    management.abort_recording()
+
+
+async def test_a_clip_runs_on_for_one_fragment_after_the_trigger_clears(
+    management,
+):
+    _enable(management)
+    management._handle_open(MagicMock(), _open_message())
+
+    with patch(MONOTONIC, return_value=100.0):
+        management.stop_recording()
+
+    assert management._session._ends_not_before == 100.0 + _fragment_seconds(management)
+    management.abort_recording()
+
+
+def test_there_is_no_post_roll_without_a_negotiated_configuration(management):
+    assert management._post_roll_seconds == 0

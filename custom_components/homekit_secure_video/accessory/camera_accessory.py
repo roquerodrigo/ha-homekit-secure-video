@@ -11,6 +11,7 @@ from uuid import UUID
 from homeassistant.components import camera
 from homeassistant.components.ffmpeg import get_ffmpeg_manager
 from homeassistant.const import STATE_ON
+from homeassistant.core import callback
 from homeassistant.helpers.event import async_track_state_change_event
 from pyhap.camera import (
     VIDEO_CODEC_PARAM_LEVEL_TYPES,
@@ -510,6 +511,7 @@ class HomeKitSecureVideoCameraAccessory(Camera):
             "stream_count": STREAM_COUNT,
         }
 
+    @callback
     def _async_handle_motion_event(self, event: Event[EventStateChangedData]) -> None:
         """Mirror the linked motion sensor onto the HomeKit motion service."""
         new_state = event.data["new_state"]
